@@ -62,7 +62,7 @@ list(APPEND MAIN_FILES
 
 add_executable(${PROJECT_NAME} 
     ${MAIN_FILES} ${RENDERER_FILES} ${CUDA_FILES}
-    ${ASSET_MANAGMENT_FILES} ${RESOURCE_FILES} ${THIRDPARTY_FILES} "src/camera/mandelbrotCamera.h" "src/camera/mandelbrotCamera.cpp")
+    ${ASSET_MANAGMENT_FILES} ${RESOURCE_FILES} ${THIRDPARTY_FILES} "src/camera/mandelbrotCamera.h" "src/camera/mandelbrotCamera.cpp" "src/mandelbulb/mandelbulb_animator.h" "src/mandelbulb/mandelbulb_animator.cpp")
 set_source_files_properties(${THIRDPARTY_FILES} PROPERTIES COMPILE_OPTIONS -w)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES "native")

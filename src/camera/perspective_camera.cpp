@@ -1,11 +1,9 @@
 #include "perspective_camera.h"
 #include "gui/gui_manager.h"
+#include "glm/gtc/matrix_transform.hpp"
 
 using namespace glfwim;
-
-
-PerspectiveCamera* PerspectiveCamera::instance = nullptr;
-
+#include <iostream>
 
 PerspectiveCamera::PerspectiveCamera()
 {
@@ -20,81 +18,6 @@ PerspectiveCamera::PerspectiveCamera()
 	roll = 0.f;
 
 	updateVectors();
-
-	theInputManager.registerUtf8KeyHandler("w", [&](auto /* mod */, auto action) {
-		if (action == Action::Press) {
-			velocityFront -= 1.0f;
-		} else if (action == Action::Release) {
-			velocityFront += 1.0f;
-		}
-	});
-
-	theInputManager.registerUtf8KeyHandler("s", [&](auto /* mod */, auto action) {
-		if (action == Action::Press) {
-			velocityFront += 1.0f;
-		} else if (action == Action::Release) {
-			velocityFront -= 1.0f;
-		}
-	});
-
-	theInputManager.registerUtf8KeyHandler("a", [&](auto /* mod */, auto action) {
-		if (action == Action::Press) {
-			velocityRight += 1.0f;
-		} else if (action == Action::Release) {
-			velocityRight -= 1.0f;
-		}
-	});
-
-	theInputManager.registerUtf8KeyHandler("d", [&](auto /* mod */, auto action) {
-		if (action == Action::Press) {
-			velocityRight -= 1.0f;
-		} else if (action == Action::Release) {
-			velocityRight += 1.0f;
-		}
-	});
-
-	theInputManager.registerMouseButtonHandler(MouseButton::Left, [&](auto /* mod */, auto action) {
-		if (action == Action::Press) {
-			if (!theGUIManager.isMouseCaptured()) {
-				if (!theGUIManager.forceCursor()) {
-					theInputManager.setMouseMode(MouseMode::Disabled);
-				}
-				directionChanging = true;
-				firstFrameAfterDirChange = true;
-				ImGuizmo::Enable(false);
-			}
-		} else if (action == Action::Release) {
-			theInputManager.setMouseMode(MouseMode::Enabled);
-			directionChanging = false;
-			ImGuizmo::Enable(true);
-		}
-	});
-
-	theInputManager.registerCursorPositionHandler([&](double x, double y) {
-		if (directionChanging && !firstFrameAfterDirChange) {
-			auto delta = glm::vec2{ (float)x, (float)y } - lastCursorPos;
-			mouseDeltaVertical = -delta.y * mouseSensitivity;
-			mouseDeltaHorizontal = delta.x * mouseSensitivity;
-			dirChanged = true;
-		} else {
-			mouseDeltaVertical = mouseDeltaHorizontal = 0;
-		}
-		firstFrameAfterDirChange = false;
-		lastCursorPos = { x, y };
-	});
-
-	theInputManager.registerMouseScrollHandler([&](double /* x */, double y) {
-		movementSpeed += (float)y / 10.f;
-		movementSpeed = glm::clamp(movementSpeed, 0.1f, 50.f);
-	});
-
-	theGUIManager.registerMouseCaptureStateChangedHandler([&](bool isMouseCaptured) {
-		if (isMouseCaptured) {
-			theInputManager.setMouseMode(MouseMode::Enabled);
-			directionChanging = false;
-			ImGuizmo::Enable(true);
-		}
-	});
 }
 
 void PerspectiveCamera::update(double dt)
@@ -108,6 +31,10 @@ void PerspectiveCamera::update(double dt)
 		yaw += mouseDeltaHorizontal;
 		pitch = std::min(std::max(pitch, -89.f), 89.f);
 		updateVectors();
+		//std::cout << "Turning. Direction: " << yaw << ", " << pitch << ", " << roll << std::endl;
+		//glm::mat4 rdm = rayDirMatrix(16.0f / 9.0f);
+		//std::cout << "Ray Dir Matrix 1. line: " << rdm[0][0] << ", " << rdm[0][1] << ", " << rdm[0][2] << ", " << rdm[0][3] << std::endl;
+		//std::cout << "Position: " << pos.x << ", " << pos.y << ", " << pos.z << std::endl;
 	}
 
 	auto velocity = glm::vec3{ velocityRight, velocityUp, velocityFront };
@@ -115,6 +42,90 @@ void PerspectiveCamera::update(double dt)
 	if (isMoving) {
 		moveTo(pos - (velocityRight * right + velocityUp * up + velocityFront * front) * (float)dt * movementSpeed);
 	}
+}
+
+void PerspectiveCamera::registerHandlers()
+{
+	theInputManager.registerUtf8KeyHandler("w", [&](auto /* mod */, auto action) {
+		if (action == Action::Press) {
+			velocityFront -= 1.0f;
+		}
+		else if (action == Action::Release) {
+			velocityFront += 1.0f;
+		}
+		});
+
+	theInputManager.registerUtf8KeyHandler("s", [&](auto /* mod */, auto action) {
+		if (action == Action::Press) {
+			velocityFront += 1.0f;
+		}
+		else if (action == Action::Release) {
+			velocityFront -= 1.0f;
+		}
+		});
+
+	theInputManager.registerUtf8KeyHandler("a", [&](auto /* mod */, auto action) {
+		if (action == Action::Press) {
+			velocityRight += 1.0f;
+		}
+		else if (action == Action::Release) {
+			velocityRight -= 1.0f;
+		}
+		});
+
+	theInputManager.registerUtf8KeyHandler("d", [&](auto /* mod */, auto action) {
+		if (action == Action::Press) {
+			velocityRight -= 1.0f;
+		}
+		else if (action == Action::Release) {
+			velocityRight += 1.0f;
+		}
+		});
+
+	theInputManager.registerMouseButtonHandler(MouseButton::Left, [&](auto /* mod */, auto action) {
+		if (action == Action::Press) {
+			if (!theGUIManager.isMouseCaptured()) {
+				if (!theGUIManager.forceCursor()) {
+					theInputManager.setMouseMode(MouseMode::Disabled);
+				}
+				directionChanging = true;
+				firstFrameAfterDirChange = true;
+				ImGuizmo::Enable(false);
+			}
+		}
+		else if (action == Action::Release) {
+			theInputManager.setMouseMode(MouseMode::Enabled);
+			directionChanging = false;
+			ImGuizmo::Enable(true);
+		}
+		});
+
+	theInputManager.registerCursorPositionHandler([&](double x, double y) {
+		if (directionChanging && !firstFrameAfterDirChange) {
+			auto delta = glm::vec2{ (float)x, (float)y } - lastCursorPos;
+			mouseDeltaVertical = -delta.y * mouseSensitivity;
+			mouseDeltaHorizontal = delta.x * mouseSensitivity;
+			dirChanged = true;
+		}
+		else {
+			mouseDeltaVertical = mouseDeltaHorizontal = 0;
+		}
+		firstFrameAfterDirChange = false;
+		lastCursorPos = { x, y };
+		});
+
+	theInputManager.registerMouseScrollHandler([&](double /* x */, double y) {
+		movementSpeed += (float)y / 10.f;
+		movementSpeed = glm::clamp(movementSpeed, 0.1f, 50.f);
+		});
+
+	theGUIManager.registerMouseCaptureStateChangedHandler([&](bool isMouseCaptured) {
+		if (isMouseCaptured) {
+			theInputManager.setMouseMode(MouseMode::Enabled);
+			directionChanging = false;
+			ImGuizmo::Enable(true);
+		}
+		});
 }
 
 void PerspectiveCamera::updateGui()
@@ -144,6 +155,10 @@ glm::mat4 PerspectiveCamera::P(float aspectRatio) const
 	auto p = glm::perspective(glm::radians(hFov), aspectRatio, nearClip, farClip);
 	p[1][1] *= -1; // Vulkan workaround
 	return p;
+}
+
+glm::mat4 PerspectiveCamera::rayDirMatrix(float aspectRatio) const {
+	return glm::inverse(P(aspectRatio) * V() * glm::translate(eyePos()));
 }
 
 glm::mat4 PerspectiveCamera::PRH(float aspectRatio) const

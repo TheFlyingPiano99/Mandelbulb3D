@@ -6,8 +6,8 @@
 #include <memory>
 #include <cuda/std/complex>
 #include "../glfwim/input_manager.h"
-#include "../camera/mandelbrotCamera.h"
 #include "../camera/perspective_camera.h"
+#include "../mandelbulb/mandelbulb_animator.h"
 
 #define checkCudaError(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char* file, int line)
@@ -118,31 +118,35 @@ __device__ float map(float x, float fromMin, float fromMax, float toMin, float t
 /*
     While and Nylander's formula for the "nth power" of the vector v = (x, y, z)
 */
-__device__ float3 vectorPower(float3 v, unsigned int n)
+__device__ glm::vec3 vectorPower(glm::vec3 v, float n)
 {
-    float r = norm3df(v.x, v.y, v.z);
-    float psi = atan2f(v.y, v.x);
-    float theta = acosf(v.z / r);
-    float nf = (float)n;
-    float powRN = powf(r, nf);
-    return float3(powRN * sinf(nf * theta) * cosf(nf * psi), powRN * sinf(nf * theta) * sinf(nf * psi), powRN * cosf(nf * theta));
+    float r = glm::length(v);
+    float phi = atan2f(v.y, v.x);
+    float theta = atan2f(sqrtf(v.x * v.x + v.y * v.y), r);
+    float powRN = powf(r, n);
+    return glm::vec3(
+                powRN * sinf(n * theta) * cosf(n * phi),
+                powRN * sinf(n * theta) * sinf(n * phi),
+                powRN * cosf(n * theta)
+           );
 }
 
 
-__device__ float4 mandelbulb(float3 c, unsigned int n, unsigned int iterationLimit, float pseudoInfinity)
+__device__ glm::vec4 mandelbulb(glm::vec3 c, float n, unsigned int iterationLimit, float pseudoInfinity)
 {
-    float4 sampleOut = float4{ 0.9f, 0.99f, 0.92f, 0.5f };
+    c = glm::vec3(c.x, c.z, c.y);    // Rearrange coordinates to change the orietation of the system
+    glm::vec4 sampleOut = glm::vec4{ 0.5f, 1.0f, 0.6f, 1.0f };   // Start out from the assumption that we are inside the object
     
-    float3 v = float3(0.0f, 0.0f, 0.0f);
+    glm::vec3 v = glm::vec3{ 0.0f, 0.0f, 0.0f };
 
     for (unsigned int i = 0; i < iterationLimit; i++) {
-        float3 powV = vectorPower(v, n);
-        v = float3(powV.x + c.x, powV.y + c.y, powV.z + c.z);
-        if (norm3df(v.x, v.y, v.z) > pseudoInfinity) {
-            sampleOut = float4{ 0.0f, 0.0f, 0.0f, 0.0f };
+        v = vectorPower(v, n) + c;
+        if (glm::length(v) > pseudoInfinity) {  // divergent iteration
+            sampleOut = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f };   // Outside the object
             break;
         }
     }
+    //return glm::vec4{ 0, 0, 0, pseudoInfinity };
     return sampleOut;
 }
 
@@ -162,7 +166,8 @@ __global__ void renderToSurface(cudaSurfaceObject_t dstSurface, size_t width, si
     surf2Dwrite(rgbaFloatToInt(dataOut), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
 }
 
-// Black and White plot
+
+
 __global__ void renderMandelbrotToSurface(cudaSurfaceObject_t dstSurface, size_t width, size_t height, float pos_x, float pos_y, float zoom)
 {
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -191,13 +196,124 @@ __global__ void renderMandelbrotToSurface(cudaSurfaceObject_t dstSurface, size_t
     surf2Dwrite(rgbaFloatToInt(dataOut), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
 }
 
+__device__ float4 sphere(float3 c, float radius)
+{
+    if (norm3df(c.x, c.y, c.z) < radius)
+    {
+        return float4(1.0f, 1.0f, 1.0f, 0.01f);
+    }
+        return float4(0.0f, 0.0f, 0.0f, 0.0f);    
+}
+
+
+/*
+    Code source: https://viclw17.github.io/2018/07/16/raytracing-ray-sphere-intersection
+*/
+__device__ glm::vec2 hit_sphere(const glm::vec3& center, float radius, const glm::vec3& rayStart, const glm::vec3& rayDir){
+    glm::vec3 oc = rayStart - center;
+    float a = glm::dot(rayDir, rayDir);
+    float b = 2.0f * glm::dot(oc, rayDir);
+    float c = glm::dot(oc,oc) - radius * radius;
+    float discriminant = b * b - 4 * a * c;
+    if(discriminant < 0.0f){
+        return glm::vec2{ -1.0f, -1.0f };
+    }
+    else{
+        return glm::vec2{(-b - sqrt(discriminant)) / (2.0*a), (-b + sqrt(discriminant)) / (2.0*a) };
+    }
+}
+
+
+__global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, size_t height, glm::vec3 eyePos, glm::mat4 rayDirMtx,
+                                    float n, unsigned int iterationLimit, float pseudoInfinity,
+                                    glm::vec3 backgroundColor)
+{
+    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height) return;
+
+    float ndcX = map(float(x), 0.0f, (float)width - 1.0f, -1.0f, 1.0f);
+    float ndcY = map(float(y), 0.0f, (float)height - 1.0f, -1.0f, 1.0f);
+    
+    glm::vec4 rayDir4 = rayDirMtx * glm::vec4(ndcX, ndcY, 0.0f, 1.0f);
+    glm::vec3 rayDir = glm::normalize(glm::vec3(rayDir4.x, rayDir4.y, rayDir4.z));
+
+    // We know that the object is in the origin of the coordinate system inside a sqrt(2) sphere:
+    glm::vec2 boundingSphereHitDistances = hit_sphere(glm::vec3(0.0f, 0.0f, 0.0f), 1.4142f, eyePos, rayDir);
+    if (boundingSphereHitDistances.y < 0.0f) {    // No intersection with the bounding sphere.
+        surf2Dwrite(rgbaFloatToInt(float4(backgroundColor.x, backgroundColor.y, backgroundColor.z, 1.0f)), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
+        return;
+    }
+    boundingSphereHitDistances.x = fmaxf(boundingSphereHitDistances.x, 0.0f);   // If inside the sphere;
+    //unsigned int rayResolution = (unsigned int)(200.0f / (1.0f + 0.01f * boundingSphereHitDistances.x));   // Scale the ray cast resolution dynamically based on the distance from the bounding sphere.
+    unsigned int rayResolution = 150;
+    float maxDistance = boundingSphereHitDistances.y - boundingSphereHitDistances.x;     
+    float stepSize = maxDistance / (float)rayResolution;
+    glm::vec3 c = eyePos + boundingSphereHitDistances.x * rayDir;
+    glm::vec4 accumulated = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    float dx = stepSize;    // Differentiation step
+    float opacityScale = 10.0;
+    for (unsigned int step = 0; step < rayResolution; step++) {
+        glm::vec4 sample = mandelbulb(c, n, iterationLimit, pseudoInfinity);    // Sample the function
+        if (sample.w > 0.001f) {
+            // Approximate gradient:
+            glm::vec4 sampleDX = mandelbulb(c + dx * glm::vec3(1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            glm::vec4 sampleDY = mandelbulb(c + dx * glm::vec3(0.0f, 1.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            glm::vec4 sampleDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, 1.0f), n, iterationLimit, pseudoInfinity);
+            glm::vec4 sampleNDX = mandelbulb(c + dx * glm::vec3(-1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            glm::vec4 sampleNDY = mandelbulb(c + dx * glm::vec3(0.0f, -1.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            glm::vec4 sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), n, iterationLimit, pseudoInfinity);
+            glm::vec3 grad = glm::vec3{ sampleDX.w - sampleNDX.w, sampleDY.w - sampleNDY.w, sampleDZ.w - sampleNDZ.w } / dx * 0.5f;
+            float gLength = glm::length(grad);
+            float w = (sample.w + sampleDX.w + sampleDY.w + sampleDZ.w + sampleNDX.w + sampleNDY.w + sampleNDZ.w) / 7.0f;
+            float light = 1.0f;
+            if (gLength > 0.001f) {
+                glm::vec3 normal = - grad / gLength;
+                glm::vec3 lightDir = -rayDir;
+                light = powf(fmaxf(glm::dot(lightDir, normal), 0.0f), 10.0f) * 0.9f + 0.1f;
+            }
+            accumulated.x += opacityScale * w * stepSize * sample.x * light * (1.0f - accumulated.w);
+            accumulated.y += opacityScale * w * stepSize * sample.y * light * (1.0f - accumulated.w);
+            accumulated.z += opacityScale * w * stepSize * sample.z * light * (1.0f - accumulated.w);
+            accumulated.w += fminf(opacityScale * stepSize * w, 1.0f) * (1.0f - accumulated.w);   // opacity (under operator)
+            if (accumulated.w > 0.95f)
+                break;
+        }
+        c += stepSize * rayDir;     // Step along the ray
+    }
+    float4 outColor = float4{
+                        accumulated.x + backgroundColor.x * (1.0f - accumulated.w),
+                        accumulated.y + backgroundColor.y * (1.0f - accumulated.w),
+                        accumulated.z + backgroundColor.z * (1.0f - accumulated.w),
+                        1.0f
+                      };
+    surf2Dwrite(rgbaFloatToInt(outColor), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
+}
+
 
 void renderCuda()
 {
     uint32_t nthreads = 32;
     dim3 dimBlock{ nthreads, nthreads };
     dim3 dimGrid{ imageWidth / nthreads + 1, imageHeight / nthreads + 1 };
-    renderMandelbrotToSurface<<<dimGrid, dimBlock>>>(surfaceObject, imageWidth, imageHeight, MandelbrotX, MandelbrotY, MandelbrotZoom);
+    
+    float n = theMandelbulbAnimator.getN();
+    unsigned int iterationLimit = 10;
+    float pseudoInfinity = 16.0f;
+
+    rayCastMandelbulb<<<dimGrid, dimBlock>>>(
+        surfaceObject,
+        imageWidth,
+        imageHeight,
+        thePerspectiveCamera.eyePos(),
+        thePerspectiveCamera.rayDirMatrix((float)imageWidth / (float)imageHeight),
+        n,
+        iterationLimit,
+        pseudoInfinity,
+        theMandelbulbAnimator.getBackgroundColor() 
+    );
+
     checkCudaError(cudaGetLastError());
     //checkCudaError(cudaDeviceSynchronize()); // not optimal! should be synced with vulkan using semaphores
 }

@@ -26,7 +26,8 @@ void Application::initialize()
     initializeSystems();
     initializeSwapChain();
     initScene();
-    mCamera.initialize();
+
+    thePerspectiveCamera.registerHandlers();
 
     theInputManager.registerUtf8KeyHandler("\n", Modifier::Alt, Action::Press, [&](){ theWindowManager.toggleFullscreen(); });
     theInputManager.registerUtf8KeyHandler("u", Modifier::None, Action::Press, [&](){ theGUIManager.setGUIState(!theGUIManager.isVisible()); });
@@ -117,8 +118,8 @@ void Application::update(double dt)
 {
     if (theWindowManager.isVisible()) {
         renderer.update(dt);
-        camera.update(dt);
-        mCamera.update(dt);
+        thePerspectiveCamera.update(dt);
+        theMandelbulbAnimator.update(dt);
     }
 }
 
@@ -132,11 +133,13 @@ void Application::updateGui()
     gameScene.updateGui();
     theGUIManager.updateGui();
     theVulkanEngine.updateGui();
+    thePerspectiveCamera.updateGui();
+    theMandelbulbAnimator.updateGui();
 }
 
 bool Application::draw()
 {
-    auto result = theVulkanEngine.drawFrame(&renderer, &camera, &gameScene);
+    auto result = theVulkanEngine.drawFrame(&renderer, &thePerspectiveCamera, &gameScene);
     switch (result){
         case VulkanEngine::Result::Success: return true;
         case VulkanEngine::Result::SwapChainOutOfDate: theWindowManager.invalidate(); return false;
@@ -157,8 +160,8 @@ void Application::initScene()
     theAssetLoader.validateAssets({ "BrainStem.glb" }, theCompatibilityDescriptor);
     theAssetLoader.validateAssets({ "sponza/Sponza.glb" }, theCompatibilityDescriptor);
 
-    camera.moveTo(glm::vec3{ 1, 1, 1 });
-    camera.lookAt(glm::vec3(0, 0, 0));
+    thePerspectiveCamera.moveTo(glm::vec3{ 5, 5, 5 });
+    thePerspectiveCamera.lookAt(glm::vec3(0, 0, 0));
 
     gameScene.ambientLight.color = glm::vec3(1.0);
     gameScene.ambientLight.power = 0.1;

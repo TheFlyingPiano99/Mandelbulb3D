@@ -8,24 +8,17 @@ public:
     void updateGui();
     void update(double dt);
 
-	static PerspectiveCamera* getInstance() {
-		if (nullptr != instance)
-			return instance;
-		instance = new PerspectiveCamera();
-		return instance;
-	}
+	void registerHandlers();
 
-	static void deleteInstance()
-	{
-		if (nullptr == instance)
-			return;
-		delete instance;
-		instance = nullptr;
+	static PerspectiveCamera& instance() {
+		static PerspectiveCamera cam;
+		return cam;
 	}
 
 public:
 	glm::mat4 V() const;
 	glm::mat4 P(float aspectRatio) const;
+	glm::mat4 rayDirMatrix(float aspectRatio) const;
 	glm::mat4 VRH() const;
 	glm::mat4 PRH(float aspectRatio) const;
 	glm::vec3 eyePos() const { return pos; }
@@ -50,14 +43,15 @@ private:
 	glm::vec3 front, up, right, worldUp, pos;
 
 private:
-	static PerspectiveCamera* instance;
-	float movementSpeed = 0.5f, mouseSensitivity = 0.3f;
+	float movementSpeed = 1.0f, mouseSensitivity = 0.5f;
 	bool directionChanging = false, firstFrameAfterDirChange = false;
 	bool dirChanged = false;
 	glm::vec2 lastCursorPos = { 0, 0 };
 	float velocityFront = 0, velocityRight = 0, velocityUp = 0;
 	float mouseDeltaVertical = 0, mouseDeltaHorizontal = 0;
 };
+
+inline auto& thePerspectiveCamera = PerspectiveCamera::instance();
 
 
 #endif//VULKAN_INTRO_PERSPECTIVE_CAMERA_COMPONENT_H

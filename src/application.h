@@ -2,7 +2,7 @@
 #define VULKAN_INTRO_APPLICATION_H
 
 #include "camera/perspective_camera.h"
-#include "camera/mandelbrotCamera.h"
+#include "mandelbulb/mandelbulb_animator.h"
 #include "rendering/renderer.h"
 #include "window_manager.h"
 #include "scene/game_scene.h"
@@ -44,8 +44,6 @@ private:
 
 public:
     Renderer renderer;
-    PerspectiveCamera camera;
-    MandelbrotCamera mCamera;
     GameScene gameScene;
 };
 

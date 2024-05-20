@@ -336,7 +336,7 @@ namespace glfwim {
 
     void InputManager::updateInputState() {
         fillInputState(previousState);
-        previousState = globalInputState.exchange(previousState, std::memory_order::release);
+        previousState = globalInputState.exchange(previousState, std::memory_order::consume);
     }
 
     void InputManager::registerWindow(GLFWwindow* window) {

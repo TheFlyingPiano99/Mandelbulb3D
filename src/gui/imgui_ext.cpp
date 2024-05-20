@@ -175,8 +175,8 @@ bool ImGuizmo::Manipulate(OPERATION operation, MODE mode, float* matrix, float* 
     if (io.DisplaySize.x == 0 || io.DisplaySize.y == 0) return false;
     float asp = io.DisplaySize.x / io.DisplaySize.y;
     ImGuizmo::SetRect(ImGui::GetMainViewport()->Pos.x, ImGui::GetMainViewport()->Pos.y, io.DisplaySize.x, io.DisplaySize.y);
-    auto pers = (theApplication.camera.PRH(asp));
-    auto viewe = (theApplication.camera.VRH());
+    auto pers = (thePerspectiveCamera.PRH(asp));
+    auto viewe = (thePerspectiveCamera.VRH());
     return ImGuizmo::Manipulate(&viewe[0][0], &pers[0][0], operation, mode, matrix, deltaMatrix, snap, localBounds, boundsSnap);
 }
 
