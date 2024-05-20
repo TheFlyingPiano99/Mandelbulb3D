@@ -54,6 +54,8 @@ void Renderer::destroySwapChainDependentComponents()
 {
     freeExportedVulkanImage();
     colorImage.destroy();
+
+    freeAdditionalRenderDataOnDevice();
 }
 
 void Renderer::render(const RenderContext& ctx)
@@ -166,6 +168,7 @@ void Renderer::createImages()
     colorImageNativeHandle = colorImage.getNativeWin32Handle(); // receive a native win32 handle
     // and finally export the image to CUDA
     exportVulkanImageToCuda_R8G8B8A8Unorm(colorImageNativeHandle, colorImage.allocationInfo.size, colorImage.allocationInfo.offset, colorImage.width, colorImage.height);
+    allocateAdditionalRenderDataOnDevice();
 }
 
 void Renderer::createResources()

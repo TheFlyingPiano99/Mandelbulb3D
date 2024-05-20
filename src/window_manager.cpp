@@ -164,7 +164,7 @@ GLFWwindow* WindowManager::createWindow()
 {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    auto pWindow = glfwCreateWindow(800, 600, "VulkanIntro", nullptr, nullptr);
+    auto pWindow = glfwCreateWindow(1024, 768, "Mandelbulb", nullptr, nullptr);
     fullscreen = false;
     glfwGetWindowPos(pWindow, &currentPosition.x, &currentPosition.y);
     return pWindow;

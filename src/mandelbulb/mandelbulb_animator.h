@@ -20,12 +20,12 @@ public:
 		return n;
 	}
 
-	const float getColoringMultiplier() const
+	float getColoringMultiplier() const
 	{
 		return coloringMultiplier;
 	}
 
-	const float getColoringPower() const
+	float getColoringPower() const
 	{
 		return coloringPower;
 	}
@@ -84,6 +84,56 @@ public:
 		modAmplitude
 	};
 
+	const glm::vec3& getLightDir() const
+	{
+		return lightDir;
+	}
+
+	const glm::vec3& getLightPower() const
+	{
+		return lightPower;
+	}
+
+	const glm::vec3& getAmbientPower() const
+	{
+		return ambientPower;
+	}
+
+	float getEdgeIntensity() const
+	{
+		return edgeIntensity;
+	}
+
+	float getSpecularIntensity() const
+	{
+		return specularIntensity;
+	}
+
+	float getShininess() const
+	{
+		return shininess;
+	}
+	
+	bool popIsHighFidelityRender()
+	{
+		bool val = isHighFidelityRender;
+		if (val) {
+			isHighFidelityHold = true;
+		}
+		isHighFidelityRender = false;
+		return val;
+	}
+
+	bool getIsHighFidelityHold() const
+	{
+		return isHighFidelityHold;
+	}
+
+	float getOpacityScale() const
+	{
+		return opacityScale;
+	}
+
 private:
 	float getModulated(float baseVal, float modAmp, float min = 0.0f, float max = 1.0f) const;
 
@@ -101,7 +151,7 @@ private:
 	double modulationT = 0.0;
 
 	ModulationType secondaryModulationType = ModulationType::modFrequency;
-	float secondaryModulationFrequency = 1.0f;
+	float secondaryModulationFrequency = 0.5f;
 	float secondaryModulationAmplitude = 0.0f;
 	double secondaryModulationT = 0.0;
 
@@ -128,6 +178,18 @@ private:
 	float rotation = 0.0f;
 	float rotationSpeed = 0.0f;
 	float rotationModulationAmp = 0.0f;
+	
+	// Shading-related:
+	glm::vec3 lightDir = glm::normalize( glm::vec3{ 1, 1, 1 } );
+	glm::vec3 lightPower = glm::vec3{ 1, 1, 1 };
+	glm::vec3 ambientPower = glm::vec3{ 0.01, 0.01, 0.01 };
+	float edgeIntensity = 1.0f;
+	float specularIntensity = 1.0f;
+	float shininess = 10.0f;
+	float opacityScale = 10.0f;
+
+	bool isHighFidelityRender = false;
+	bool isHighFidelityHold = false;
 };
 
 inline MandelbulbAnimator& theMandelbulbAnimator = MandelbulbAnimator::instance();

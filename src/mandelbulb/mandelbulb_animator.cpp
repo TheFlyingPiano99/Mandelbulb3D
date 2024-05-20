@@ -6,6 +6,9 @@
 
 void MandelbulbAnimator::update(double dt)
 {
+	if (isHighFidelityHold)
+		return;
+
 	switch (animationWaveFormN) {
 	case AnimationWaveForm::off:
 		break;
@@ -33,7 +36,7 @@ void MandelbulbAnimator::update(double dt)
 	}
 	}
 
-	rotation += getModulated(rotationSpeed, rotationModulationAmp, 0.0f, 10.0f) * dt;
+	rotation += getModulated(rotationSpeed, rotationModulationAmp, -6.0f, 6.0f) * dt;
 
 	// Update LFO-s:
 	modulationT += dt;
@@ -50,13 +53,21 @@ float MandelbulbAnimator::getModulated(float baseVal, float modAmp, float min, f
 		x = modulationT * modulationFrequency * 2.0 * M_PI;
 	}
 	float amplitude = modAmp + ((secondaryModulationType == ModulationType::modAmplitude) ? secondaryModulationAmplitude * sinf(secondaryX) : 0.0f);
-	std::cout << amplitude << std::endl;
 	return fminf(fmaxf(baseVal + amplitude * sinf(x), min), max);
 }
 
 void MandelbulbAnimator::updateGui()
 {
-	ImGui::DragFloat("Bulb rotation speed", &rotationSpeed, 0.1f, 0.0f, 10.0f, "%.1f");
+	ImGui::Text("Shading");
+	ImGui::ColorEdit3("Dir. light power", (float*)&lightPower);
+	ImGui::ColorEdit3("Ambient power", (float*)&ambientPower);
+	ImGui::DragFloat("Edge intensity", &edgeIntensity, 0.01f, 0.0f, 1.0f, "%.2f");
+	ImGui::DragFloat("Specular intensity", &specularIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
+	ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 100.0f, "%.0f");
+	ImGui::DragFloat("Opacity scale", &opacityScale, 0.1f, 1.0f, 100.0f, "%.1f");
+
+	ImGui::Text("Bulb movement");
+	ImGui::DragFloat("Bulb rotation speed", &rotationSpeed, 0.1f, -6.0f, 6.0f, "%.1f");
 
 	ImGui::DragFloat("n animation speed", &animationSpeedN, 0.1f, 0.0f, 20.0f, "%.1f");
 	ImGui::DragFloat("min n", &minN, 0.1f, 1.0f, maxN, "%.1f");
@@ -86,12 +97,23 @@ void MandelbulbAnimator::updateGui()
 
 	ImGui::Text("Modulation control");
 	ImGui::DragFloat("Modulation frequency", &modulationFrequency, 0.1f, 0.1f, 10.0f, "%.1f");
-	ImGui::DragFloat("Secondary modulation frequency", &secondaryModulationFrequency, 0.01f, 0.01f, 1.0f, "%.2f");
-	ImGui::DragFloat("Secondary modulation amplitude", &secondaryModulationAmplitude, 0.01f, 0.0f, 1.0f, "%.2f");
+	ImGui::DragFloat("Secondary modulation frequency", &secondaryModulationFrequency, 0.001f, 0.001f, 1.0f, "%.3f");
+	ImGui::DragFloat("Secondary modulation amplitude", &secondaryModulationAmplitude, 0.001f, 0.0f, 1.0f, "%.3f");
 
 	ImGui::Text("Modulation routing");
-	ImGui::DragFloat("Modulation ampltude for n", &modulationN, 0.1f, 0.0f, 20.0f, "%.1f");
-	ImGui::DragFloat("Modulation ampltude color mix [0.0]", &modulationColor0, 0.1f, 0.0f, 1.0f, "%.1f");
-	ImGui::DragFloat("Modulation ampltude color mix [0.5]", &modulationColor1, 0.1f, 0.0f, 1.0f, "%.1f");
-	ImGui::DragFloat("Modulation ampltude color mix [1.0]", &modulationColor2, 0.1f, 0.0f, 1.0f, "%.1f");
+	ImGui::DragFloat("Modulation for rotation speed", &rotationModulationAmp, 0.1f, 0.0f, 10.0f, "%.1f");
+	ImGui::DragFloat("Modulation for n anim. speed", &modulationN, 0.1f, 0.0f, 20.0f, "%.1f");
+	ImGui::DragFloat("Modulation color mix [0.0]", &modulationColor0, 0.1f, 0.0f, 1.0f, "%.1f");
+	ImGui::DragFloat("Modulation color mix [0.5]", &modulationColor1, 0.1f, 0.0f, 1.0f, "%.1f");
+	ImGui::DragFloat("Modulation color mix [1.0]", &modulationColor2, 0.1f, 0.0f, 1.0f, "%.1f");
+
+	bool isPressed = ImGui::Button("High fidelity render");
+	if (isPressed && !isHighFidelityHold) {
+		isHighFidelityRender = true;
+	}
+	isPressed = ImGui::Button("Resume");
+	if (isPressed && isHighFidelityHold) {
+		isHighFidelityHold = false;
+	}
+
 }

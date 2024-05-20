@@ -31,6 +31,40 @@ void freeExportedVulkanImage()
     checkCudaError(cudaDestroyExternalMemory(cudaExtMemImageBuffer));
 }
 
+struct SceneData {
+    // Colors:
+    glm::vec3 skyColor;
+    glm::vec3 horizontColor;
+    glm::vec3 groundColor;
+    glm::vec3 color0;
+    glm::vec3 color1;
+    glm::vec3 color2;
+
+    // Shading:
+    glm::vec3 lightDir;
+    glm::vec3 lightPower;
+    glm::vec3 ambientPower;
+    float specularIntensity;
+    float edgeIntensity;
+    float shininess;
+    float opacityScale;
+
+    // Fidelity:
+    unsigned int rayResolution;
+};
+
+SceneData* sceneData;
+
+void allocateAdditionalRenderDataOnDevice()
+{
+    checkCudaError(cudaMalloc(&sceneData, sizeof(SceneData)));
+}
+
+void freeAdditionalRenderDataOnDevice()
+{
+    checkCudaError(cudaFree(sceneData));
+}
+
 void exportVulkanImageToCuda_R8G8B8A8Unorm(void* mem, VkDeviceSize size, VkDeviceSize offset, uint32_t width, uint32_t height)
 {
     imageWidth = width;
@@ -241,14 +275,9 @@ __device__ glm::vec2 hit_sphere(const glm::vec3& center, float radius, const glm
 
 __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, size_t height, glm::vec3 eyePos, glm::mat4 rayDirMtx,
                                     float n, unsigned int iterationLimit, float pseudoInfinity,
-                                    glm::vec3 skyColor,
-                                    glm::vec3 horizontColor,
-                                    glm::vec3 groundColor,
                                     float coloringMultiplier, float coloringPower,
-                                    glm::vec3 color0,
-                                    glm::vec3 color1,
-                                    glm::vec3 color2 /*,
-                                    float rotationRad */
+                                    float rotationRad,
+                                    SceneData* scene
                                     )
 {
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -262,40 +291,38 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
     glm::vec4 rayDir4 = rayDirMtx * glm::vec4(ndcX, ndcY, 0.0f, 1.0f);
     glm::vec3 rayDir = glm::normalize(glm::vec3(rayDir4.x, rayDir4.y, rayDir4.z));
 
+    // rotate coordinate system to rotate the bulb:
+    glm::mat4 rotationMat(1.0f);
+    rotationMat = glm::rotate(rotationMat, rotationRad, glm::vec3(0.0, 1.0, 0.0));
+    glm::vec4 v4 = rotationMat * glm::vec4(eyePos, 1.0f); 
+    eyePos = glm::vec3(v4.x, v4.y, v4.z);
+    v4 = rotationMat * glm::vec4(rayDir, 0.0f);
+    rayDir = glm::vec3(v4.x, v4.y, v4.z);
+
     // We know that the object is in the origin of the coordinate system inside a sqrt(2) sphere:
     glm::vec2 boundingSphereHitDistances = hit_sphere(glm::vec3(0.0f, 0.0f, 0.0f), 1.4142f, eyePos, rayDir);
-    glm::vec3 backgroundColor = horizontColor * (1.0f - fabsf(rayDir.y)) + skyColor * fmaxf(rayDir.y, 0.0f) + groundColor * -fminf(rayDir.y, 0.0f);   // Create color gradient in background
+    glm::vec3 backgroundColor = scene->horizontColor * (1.0f - fabsf(rayDir.y)) + scene->skyColor * fmaxf(rayDir.y, 0.0f) + scene->groundColor * -fminf(rayDir.y, 0.0f);   // Create color gradient in background
     if (boundingSphereHitDistances.y < 0.0f) {    // No intersection with the bounding sphere.
         surf2Dwrite(rgbaFloatToInt(float4(backgroundColor.x, backgroundColor.y, backgroundColor.z, 1.0f)), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
         return;
     }
     boundingSphereHitDistances.x = fmaxf(boundingSphereHitDistances.x, 0.0f);   // If inside the sphere;
-    //unsigned int rayResolution = (unsigned int)(200.0f / (1.0f + 0.01f * boundingSphereHitDistances.x));   // Scale the ray cast resolution dynamically based on the distance from the bounding sphere.
-    unsigned int rayResolution = 150;
     float maxDistance = boundingSphereHitDistances.y - boundingSphereHitDistances.x;     
-    float stepSize = maxDistance / (float)rayResolution;
+    float stepSize = maxDistance / (float)scene->rayResolution;
     glm::vec3 c = eyePos + boundingSphereHitDistances.x * rayDir;
     glm::vec4 accumulated = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-    float dx = stepSize;    // Differentiation step
-    float opacityScale = 10.0;
-    /*
-    glm::mat4 rotationMat(1.0f);
-    rotationMat = glm::rotate(rotationMat, rotationRad, glm::vec3(0.0, 1.0, 0.0));
-    */
-    for (unsigned int step = 0; step < rayResolution; step++) {
-        /*
-        glm::vec4 cRot = rotationMat * glm::vec4(c, 1.0f); // rotate point to rotate the bulb
-        c = glm::vec3(cRot.x, cRot.y, cRot.z);
-        */
-        glm::vec4 sample = mandelbulb(c, n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
+    float dx = 0.001f;    // Differentiation step
+
+    for (unsigned int step = 0; step < scene->rayResolution; step++) {
+        glm::vec4 sample = mandelbulb(c, n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
         if (sample.w > 0.001f) {
             // Approximate gradient:
-            glm::vec4 sampleDX = mandelbulb(c + dx * glm::vec3(1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
-            glm::vec4 sampleDY = mandelbulb(c + dx * glm::vec3(0.0f, 1.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
-            glm::vec4 sampleDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, 1.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
-            glm::vec4 sampleNDX = mandelbulb(c + dx * glm::vec3(-1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
-            glm::vec4 sampleNDY = mandelbulb(c + dx * glm::vec3(0.0f, -1.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
-            glm::vec4 sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
+            glm::vec4 sampleDX = mandelbulb(c + dx * glm::vec3(1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            glm::vec4 sampleDY = mandelbulb(c + dx * glm::vec3(0.0f, 1.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            glm::vec4 sampleDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, 1.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            glm::vec4 sampleNDX = mandelbulb(c + dx * glm::vec3(-1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            glm::vec4 sampleNDY = mandelbulb(c + dx * glm::vec3(0.0f, -1.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            glm::vec4 sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
             glm::vec3 grad = glm::vec3{ sampleDX.w - sampleNDX.w, sampleDY.w - sampleNDY.w, sampleDZ.w - sampleNDZ.w } / dx * 0.5f;
             float gLength = glm::length(grad);
             float w = (sample.w + sampleDX.w + sampleDY.w + sampleDZ.w + sampleNDX.w + sampleNDY.w + sampleNDZ.w) / 7.0f;
@@ -308,16 +335,23 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
                               + glm::vec3(sampleNDY.x, sampleNDY.y, sampleNDY.z)
                               + glm::vec3(sampleNDZ.x, sampleNDZ.y, sampleNDZ.z)
                               ) / 7.0f;
-            float light = 1.0f;
-            if (gLength > 0.001f) {
+            glm::vec3 shading = color;  // If no gradient is available use the base color as "shaded color"
+            
+            if (gLength > 0.00001f) {
                 glm::vec3 normal = - grad / gLength;
-                glm::vec3 lightDir = -rayDir;
-                light = powf(fmaxf(glm::dot(lightDir, normal), 0.0f), 10.0f) * 0.9f + 0.1f;
+                glm::vec3 halfway = glm::normalize(scene->lightDir - rayDir);
+                shading = (powf(fmaxf(glm::dot(-rayDir, normal), 0.0f), 20.0f * scene->edgeIntensity) * scene->edgeIntensity + (1.0f - scene->edgeIntensity))  // Edge shading
+                    * (
+                        + scene->lightPower * color * fmaxf(glm::dot(scene->lightDir, normal), 0.0f)                                        // Diffuse
+                        + scene->lightPower * scene->specularIntensity * powf(fmaxf(glm::dot(halfway, normal), 0.0f), scene->shininess)     // Specular
+                        + scene->ambientPower                                                                                               // Ambient
+                    );
             }
-            accumulated.x += opacityScale * w * stepSize * color.x * light * (1.0f - accumulated.w);
-            accumulated.y += opacityScale * w * stepSize * color.y * light * (1.0f - accumulated.w);
-            accumulated.z += opacityScale * w * stepSize * color.z * light * (1.0f - accumulated.w);
-            accumulated.w += fminf(opacityScale * stepSize * w, 1.0f) * (1.0f - accumulated.w);   // opacity (under operator)
+            
+            accumulated.x += scene->opacityScale * stepSize * w * shading.x * (1.0f - accumulated.w);
+            accumulated.y += scene->opacityScale * stepSize * w * shading.y * (1.0f - accumulated.w);
+            accumulated.z += scene->opacityScale * stepSize * w * shading.z * (1.0f - accumulated.w);
+            accumulated.w += fminf(scene->opacityScale * stepSize * w, 1.0f) * (1.0f - accumulated.w);   // opacity (under operator)
             if (accumulated.w > 0.95f)
                 break;
         }
@@ -335,34 +369,56 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
 
 void renderCuda()
 {
-    uint32_t nthreads = 32;
-    dim3 dimBlock{ nthreads, nthreads };
-    dim3 dimGrid{ imageWidth / nthreads + 1, imageHeight / nthreads + 1 };
+    if (!theMandelbulbAnimator.getIsHighFidelityHold()) {
+        uint32_t nthreads = 16;
+        dim3 dimBlock{ nthreads, nthreads };
+        dim3 dimGrid{ imageWidth / nthreads + 1, imageHeight / nthreads + 1 };
     
-    float n = theMandelbulbAnimator.getN();
-    unsigned int iterationLimit = 10;
-    float pseudoInfinity = 16.0f;
+        
+        bool isHighFidelity = theMandelbulbAnimator.popIsHighFidelityRender();
 
-    rayCastMandelbulb<<<dimGrid, dimBlock>>>(
-        surfaceObject,
-        imageWidth,
-        imageHeight,
-        thePerspectiveCamera.eyePos(),
-        thePerspectiveCamera.rayDirMatrix((float)imageWidth / (float)imageHeight),
-        n,
-        iterationLimit,
-        pseudoInfinity,
-        theMandelbulbAnimator.getSkyColor(),
-        theMandelbulbAnimator.getHorizontColor(),
-        theMandelbulbAnimator.getGroundColor(),
-        theMandelbulbAnimator.getColoringMultiplier(),
-        theMandelbulbAnimator.getColoringPower(),
-        theMandelbulbAnimator.getColor0(),
-        theMandelbulbAnimator.getColor1(),
-        theMandelbulbAnimator.getColor2() /*,
-        theMandelbulbAnimator.getRotation() */
-    );
+        float n = theMandelbulbAnimator.getN();
+        unsigned int iterationLimit = (isHighFidelity)? 200 : 8;
+        float pseudoInfinity = 16.0f;
 
-    checkCudaError(cudaGetLastError());
+        SceneData hostSceneData =  {
+            // Colors:
+            theMandelbulbAnimator.getSkyColor(),
+            theMandelbulbAnimator.getHorizontColor(),
+            theMandelbulbAnimator.getGroundColor(),
+            theMandelbulbAnimator.getColor0(),
+            theMandelbulbAnimator.getColor1(),
+            theMandelbulbAnimator.getColor2(),
+            // Shading:
+            theMandelbulbAnimator.getLightDir(),
+            theMandelbulbAnimator.getLightPower(),
+            theMandelbulbAnimator.getAmbientPower(),
+            theMandelbulbAnimator.getSpecularIntensity(),
+            theMandelbulbAnimator.getEdgeIntensity(),
+            theMandelbulbAnimator.getShininess(),
+            theMandelbulbAnimator.getOpacityScale(),
+            // Fidelity:
+            (unsigned int)((isHighFidelity)? 3000 : 200)
+        };
+
+        cudaMemcpy(sceneData, &hostSceneData, sizeof(SceneData), cudaMemcpyHostToDevice);
+
+        rayCastMandelbulb<<<dimGrid, dimBlock>>>(
+            surfaceObject,
+            imageWidth,
+            imageHeight,
+            thePerspectiveCamera.eyePos(),
+            thePerspectiveCamera.rayDirMatrix((float)imageWidth / (float)imageHeight),
+            n,
+            iterationLimit,
+            pseudoInfinity,
+            theMandelbulbAnimator.getColoringMultiplier(),
+            theMandelbulbAnimator.getColoringPower(),
+            theMandelbulbAnimator.getRotation(),
+            sceneData
+        );
+    }
+
+    //checkCudaError(cudaGetLastError());
     //checkCudaError(cudaDeviceSynchronize()); // not optimal! should be synced with vulkan using semaphores
 }

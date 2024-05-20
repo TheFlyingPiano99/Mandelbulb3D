@@ -18,4 +18,7 @@ void renderCuda();
 void freeExportedSemaphores();
 void exportSemaphoresToCuda(void* cudaWaitsForVulkanSemaphoreHandle, void* vulkanWaitsForCudaSemaphoreHandle);
 
+void allocateAdditionalRenderDataOnDevice();
+void freeAdditionalRenderDataOnDevice();
+
 #endif //CUDA_INTEROP_CUH
