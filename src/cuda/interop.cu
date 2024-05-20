@@ -378,7 +378,7 @@ void renderCuda()
         bool isHighFidelity = theMandelbulbAnimator.popIsHighFidelityRender();
 
         float n = theMandelbulbAnimator.getN();
-        unsigned int iterationLimit = (isHighFidelity)? 200 : 8;
+        unsigned int iterationLimit = (isHighFidelity)? 300 : 8;
         float pseudoInfinity = 16.0f;
 
         SceneData hostSceneData =  {
