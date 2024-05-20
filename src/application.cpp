@@ -150,6 +150,7 @@ bool Application::draw()
 
 void Application::initScene()
 {
+    /*
     if (fs::exists(cDirModels)) {
         theAssetLoader.addRootAssetLocationDirectory(cDirModels.string());
         theAssetLoader.collectFiles();
@@ -159,6 +160,7 @@ void Application::initScene()
 
     theAssetLoader.validateAssets({ "BrainStem.glb" }, theCompatibilityDescriptor);
     theAssetLoader.validateAssets({ "sponza/Sponza.glb" }, theCompatibilityDescriptor);
+    */
 
     thePerspectiveCamera.moveTo(glm::vec3{ 5, 5, 5 });
     thePerspectiveCamera.lookAt(glm::vec3(0, 0, 0));

@@ -130,7 +130,7 @@ namespace glfwim {
     }
 
     void InputManager::pollEvents() {
-        glfwWaitEventsTimeout(0.1);
+        glfwWaitEventsTimeout(0.01);
         elapsedTime();
         updateInputState();
     }
@@ -336,7 +336,7 @@ namespace glfwim {
 
     void InputManager::updateInputState() {
         fillInputState(previousState);
-        previousState = globalInputState.exchange(previousState, std::memory_order::consume);
+        previousState = globalInputState.exchange(previousState, std::memory_order::relaxed);
     }
 
     void InputManager::registerWindow(GLFWwindow* window) {
