@@ -8,6 +8,7 @@
 #include "../glfwim/input_manager.h"
 #include "../camera/perspective_camera.h"
 #include "../mandelbulb/mandelbulb_animator.h"
+#include "glm/gtc/matrix_transform.hpp"
 
 #define checkCudaError(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char* file, int line)
@@ -246,7 +247,8 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
                                     float coloringMultiplier, float coloringPower,
                                     glm::vec3 color0,
                                     glm::vec3 color1,
-                                    glm::vec3 color2
+                                    glm::vec3 color2 /*,
+                                    float rotationRad */
                                     )
 {
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -276,7 +278,15 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
     glm::vec4 accumulated = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
     float dx = stepSize;    // Differentiation step
     float opacityScale = 10.0;
+    /*
+    glm::mat4 rotationMat(1.0f);
+    rotationMat = glm::rotate(rotationMat, rotationRad, glm::vec3(0.0, 1.0, 0.0));
+    */
     for (unsigned int step = 0; step < rayResolution; step++) {
+        /*
+        glm::vec4 cRot = rotationMat * glm::vec4(c, 1.0f); // rotate point to rotate the bulb
+        c = glm::vec3(cRot.x, cRot.y, cRot.z);
+        */
         glm::vec4 sample = mandelbulb(c, n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, color0, color1, color2);
         if (sample.w > 0.001f) {
             // Approximate gradient:
@@ -349,7 +359,8 @@ void renderCuda()
         theMandelbulbAnimator.getColoringPower(),
         theMandelbulbAnimator.getColor0(),
         theMandelbulbAnimator.getColor1(),
-        theMandelbulbAnimator.getColor2()
+        theMandelbulbAnimator.getColor2() /*,
+        theMandelbulbAnimator.getRotation() */
     );
 
     checkCudaError(cudaGetLastError());
