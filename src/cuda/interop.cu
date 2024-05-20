@@ -7,6 +7,7 @@
 #include <cuda/std/complex>
 #include "../glfwim/input_manager.h"
 #include "../camera/mandelbrotCamera.h"
+#include "../camera/perspective_camera.h"
 
 #define checkCudaError(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(cudaError_t code, const char* file, int line)
@@ -113,6 +114,39 @@ __device__ float map(float x, float fromMin, float fromMax, float toMin, float t
     return toMin + (toMax - toMin) * (x - fromMin) / (fromMax - fromMin);
 }
 
+
+/*
+    While and Nylander's formula for the "nth power" of the vector v = (x, y, z)
+*/
+__device__ float3 vectorPower(float3 v, unsigned int n)
+{
+    float r = norm3df(v.x, v.y, v.z);
+    float psi = atan2f(v.y, v.x);
+    float theta = acosf(v.z / r);
+    float nf = (float)n;
+    float powRN = powf(r, nf);
+    return float3(powRN * sinf(nf * theta) * cosf(nf * psi), powRN * sinf(nf * theta) * sinf(nf * psi), powRN * cosf(nf * theta));
+}
+
+
+__device__ float4 mandelbulb(float3 c, unsigned int n, unsigned int iterationLimit, float pseudoInfinity)
+{
+    float4 sampleOut = float4{ 0.9f, 0.99f, 0.92f, 0.5f };
+    
+    float3 v = float3(0.0f, 0.0f, 0.0f);
+
+    for (unsigned int i = 0; i < iterationLimit; i++) {
+        float3 powV = vectorPower(v, n);
+        v = float3(powV.x + c.x, powV.y + c.y, powV.z + c.z);
+        if (norm3df(v.x, v.y, v.z) > pseudoInfinity) {
+            sampleOut = float4{ 0.0f, 0.0f, 0.0f, 0.0f };
+            break;
+        }
+    }
+    return sampleOut;
+}
+
+
 __global__ void renderToSurface(cudaSurfaceObject_t dstSurface, size_t width, size_t height)
 {
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -120,8 +154,8 @@ __global__ void renderToSurface(cudaSurfaceObject_t dstSurface, size_t width, si
 
     if (x >= width || y >= height) return;
 
-    float wx = map(float(x), 0, (float)width, 0, 1.0);
-    float wy = map(float(y), 0, (float)height, 0, 1.0);
+    float wx = map(float(x), 0.0f, (float)width, 0.0f, 1.0f);
+    float wy = map(float(y), 0.0f, (float)height, 0.0f, 1.0f);
 
     float4 dataOut = float4{ wx, wy, wx, 1.0f };
 

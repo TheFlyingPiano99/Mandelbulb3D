@@ -8,6 +8,21 @@ public:
     void updateGui();
     void update(double dt);
 
+	static PerspectiveCamera* getInstance() {
+		if (nullptr != instance)
+			return instance;
+		instance = new PerspectiveCamera();
+		return instance;
+	}
+
+	static void deleteInstance()
+	{
+		if (nullptr == instance)
+			return;
+		delete instance;
+		instance = nullptr;
+	}
+
 public:
 	glm::mat4 V() const;
 	glm::mat4 P(float aspectRatio) const;
@@ -35,6 +50,7 @@ private:
 	glm::vec3 front, up, right, worldUp, pos;
 
 private:
+	static PerspectiveCamera* instance;
 	float movementSpeed = 0.5f, mouseSensitivity = 0.3f;
 	bool directionChanging = false, firstFrameAfterDirChange = false;
 	bool dirChanged = false;
@@ -42,5 +58,6 @@ private:
 	float velocityFront = 0, velocityRight = 0, velocityUp = 0;
 	float mouseDeltaVertical = 0, mouseDeltaHorizontal = 0;
 };
+
 
 #endif//VULKAN_INTRO_PERSPECTIVE_CAMERA_COMPONENT_H

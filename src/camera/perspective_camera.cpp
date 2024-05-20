@@ -3,6 +3,10 @@
 
 using namespace glfwim;
 
+
+PerspectiveCamera* PerspectiveCamera::instance = nullptr;
+
+
 PerspectiveCamera::PerspectiveCamera()
 {
 	worldUp = { 0.0, 1.0, 0.0 };
