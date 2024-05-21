@@ -80,9 +80,11 @@ void MandelbulbAnimator::updateGui()
 	ImGui::Text("Bulb movement");
 	ImGui::DragFloat("Bulb rotation speed", &rotationSpeed, 0.1f, -6.0f, 6.0f, "%.1f");
 
+	ImGui::Text("Bulb parameters");
 	ImGui::DragFloat("n animation speed", &animationSpeedN, 0.1f, 0.0f, 20.0f, "%.1f");
 	ImGui::DragFloat("min n", &minN, 0.1f, 1.0f, maxN, "%.1f");
 	ImGui::DragFloat("max n", &maxN, 0.1f, minN, 100.0f, "%.1f");
+	ImGui::DragFloat("Pseudo infinity", &pseudoInfinity, 0.1f, 0.5f, 100.0f, "%.1f");
 
 	ImGui::ColorEdit3("Sky color", (float*)&skyColor);
 	ImGui::ColorEdit3("Horizont color", (float*)&horizontColor);
