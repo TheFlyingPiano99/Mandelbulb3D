@@ -144,6 +144,10 @@ public:
 		return opacityScale;
 	}
 
+	float getTintedAttenuationAmount() const {
+		return tintedAttenuationAmount;
+	}
+
 private:
 	float getModulated(float baseVal, float modAmp, float min = 0.0f, float max = 1.0f) const;
 
@@ -199,6 +203,7 @@ private:
 	float ambientIntensity = 1.0f;
 	float shininess = 20.0f;
 	float opacityScale = 10.0f;
+	float tintedAttenuationAmount = 0.5f;
 
 	bool isHighFidelityRender = false;
 	bool isHighFidelityHold = false;

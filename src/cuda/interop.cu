@@ -51,6 +51,7 @@ struct SceneData {
     float shininess;
     float opacityScale;
     unsigned int shadowStepCount;
+    float tintedAttenuationAmount;
 
     // Fidelity:
     unsigned int rayResolution;
@@ -288,9 +289,8 @@ __device__ glm::vec4 transferColor(
     }
 }
 
-__device__ glm::vec3 tintedAttenuation(glm::vec4& rgba)
+__device__ glm::vec3 tintedAttenuation(glm::vec4& rgba, float mix)
 {
-    float mix = 0.0f;
     return rgba.w * ((1.0f - mix) * glm::vec3(1.0f, 1.0f, 1.0f) + mix * glm::vec3( 1.0f - rgba.x, 1.0f - rgba.y, 1.0f - rgba.z ));
 }
 
@@ -352,20 +352,20 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
             float avgSample = (sample * 1.25f + sampleDX + sampleDY + sampleDZ + sampleNDX + sampleNDY + sampleNDZ) / 7.25f;
             glm::vec4 rgba = transferColor(avgSample, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
             glm::vec3 rgb = glm::vec3(rgba.x, rgba.y, rgba.z);
-            glm::vec3 tintedA = tintedAttenuation(rgba);
+            glm::vec3 tintedA = tintedAttenuation(rgba, scene->tintedAttenuationAmount);
             glm::vec3 shading = rgb;  // If no gradient is available use the base color as "shaded color"
             
             if (gLength > 0.00001f) {
                 glm::vec3 normal = grad / gLength;  // !!! The gradient now is pointing towards the outside of the object. No (-1) !!!
                 glm::vec3 halfway = glm::normalize(scene->lightDir - rayDir);
-                float shadow = 0.0f;
+                glm::vec3 shadow = glm::vec3(0.0f);
                 glm::vec3 shadowC = c + stepSize * scene->lightDir;
                 float shadowStepWeight = 1.0f;
                 for (unsigned int j = 0; j < scene->shadowStepCount; j++) {
                     float shadowSample = mandelbulb(shadowC, n, iterationLimit, pseudoInfinity);
                     glm::vec4 shadowRGBA = transferColor(shadowSample, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-                    shadowRGBA.w *= scene->opacityScale * shadowStepWeight;
-                    shadow += fminf(stepSize * shadowRGBA.w, 1.0f) * (1.0f - shadow);
+                    glm::vec3 temp = stepSize * scene->opacityScale * shadowStepWeight * tintedAttenuation(shadowRGBA, scene->tintedAttenuationAmount);
+                    shadow += glm::vec3(fminf(temp.x, 1.0f), fminf(temp.y, 1.0f), fminf(temp.z, 1.0f)) * (1.0f - shadow);
                     shadowC += stepSize * scene->lightDir;
                     shadowStepWeight *= 0.99f;
                 }
@@ -380,7 +380,7 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
             accumulatedColor += stepSize * scene->opacityScale * rgba.w * shading * (1.0f - accumulatedAttenuation);  // Color (under operator)
 
             glm::vec3 temp = stepSize * scene->opacityScale * tintedA;
-            accumulatedAttenuation += glm::vec3(fminf(temp.x, 0.0f), fminf(temp.y, 0.0f), fminf(temp.z, 0.0f)) * (1.0f - accumulatedAttenuation);   // Attenuation (under operator)
+            accumulatedAttenuation += glm::vec3(fminf(temp.x, 1.0f), fminf(temp.y, 1.0f), fminf(temp.z, 1.0f)) * (1.0f - accumulatedAttenuation);   // Attenuation (under operator)
             if (accumulatedAttenuation.x > 0.95f && accumulatedAttenuation.y > 0.95f && accumulatedAttenuation.z > 0.95f) {
                 accumulatedAttenuation = glm::vec3(1.0f, 1.0f, 1.0f);
                 break;
@@ -431,6 +431,7 @@ void renderCuda()
             theMandelbulbAnimator.getShininess(),
             theMandelbulbAnimator.getOpacityScale(),
             (unsigned int)((isHighFidelity)? 10 : 5),
+            theMandelbulbAnimator.getTintedAttenuationAmount(),
             // Fidelity:
             (unsigned int)((isHighFidelity)? 3000 : 200)
         };

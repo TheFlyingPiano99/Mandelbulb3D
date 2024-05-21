@@ -67,6 +67,7 @@ void MandelbulbAnimator::updateGui()
 	ImGui::DragFloat("Ambient intensity", &ambientIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
 	ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 100.0f, "%.0f");
 	ImGui::DragFloat("Opacity scale", &opacityScale, 0.1f, 1.0f, 100.0f, "%.1f");
+	ImGui::DragFloat("Tinted attenuation", &tintedAttenuationAmount, 0.01f, 0.0f, 1.0f, "%.01f");
 
 	ImGui::Text("Bulb movement");
 	ImGui::DragFloat("Bulb rotation speed", &rotationSpeed, 0.1f, -6.0f, 6.0f, "%.1f");
