@@ -167,16 +167,11 @@ __device__ glm::vec3 vectorPower(glm::vec3 v, float n)
 }
 
 
-__device__ glm::vec4 mandelbulb(
+__device__ float mandelbulb(
                         glm::vec3 c,
                         float n,
                         unsigned int iterationLimit,
-                        float pseudoInfinity,
-                        float coloringMultiplier,
-                        float coloringPower,
-                        glm::vec3& color0,
-                        glm::vec3& color1,
-                        glm::vec3& color2
+                        float pseudoInfinity
 )
 {
     c = glm::vec3(c.x, c.z, c.y);    // Rearrange coordinates to change the orietation of the system
@@ -187,16 +182,10 @@ __device__ glm::vec4 mandelbulb(
     for (unsigned int i = 0; i < iterationLimit; i++) {
         v = vectorPower(v, n) + c;
         if (glm::length(v) > pseudoInfinity) {  // divergent iteration
-            return glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f };   // Outside the object
+            break;
         }
     }
-    float t = powf(glm::length(v) * coloringMultiplier, coloringPower);
-    if (t < 0.5) {
-        return glm::vec4(color0 * (1.0f - t * 2.0f) + color1 * t * 2.0f, 1.0f);
-    }
-    else {
-        return glm::vec4(color1 * (1.0f - (t - 0.5f) * 2.0f) + color2 * (t - 0.5f) * 2.0f, 1.0f);
-    }
+    return glm::length(v) / pseudoInfinity;   // Outside the object
 }
 
 
@@ -273,6 +262,30 @@ __device__ glm::vec2 hit_sphere(const glm::vec3& center, float radius, const glm
 }
 
 
+__device__ glm::vec4 transferColor(
+                        float w,
+                        float coloringMultiplier,
+                        float coloringPower,
+                        glm::vec3& color0,
+                        glm::vec3& color1,
+                        glm::vec3& color2
+                     )
+{
+    float bias = 0.0f;
+    //float a = powf(1.0f - w + bias, 0.5f);
+    float a = 1.0f;
+    if (w - bias > 1.0f) {
+        a = 0.0f;
+    }
+    float t = powf(fminf(fmaxf(w, 0.0f), 1.0f) * coloringMultiplier, coloringPower);
+    if (t < 0.5) {
+        return glm::vec4(color0 * (1.0f - t * 2.0f) + color1 * t * 2.0f, a);
+    }
+    else {
+        return glm::vec4(color1 * (1.0f - (t - 0.5f) * 2.0f) + color2 * (t - 0.5f) * 2.0f, a);
+    }
+}
+
 __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, size_t height, glm::vec3 eyePos, glm::mat4 rayDirMtx,
                                     float n, unsigned int iterationLimit, float pseudoInfinity,
                                     float coloringMultiplier, float coloringPower,
@@ -314,46 +327,42 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
     float dx = 0.001f;    // Differentiation step
 
     for (unsigned int step = 0; step < scene->rayResolution; step++) {
-        glm::vec4 sample = mandelbulb(c, n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-        if (sample.w > 0.001f) {
+        float sample = mandelbulb(c, n, iterationLimit, pseudoInfinity);
+        if (sample < 1.0f) {
             // Approximate gradient:
-            glm::vec4 sampleDX = mandelbulb(c + dx * glm::vec3(1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-            glm::vec4 sampleDY = mandelbulb(c + dx * glm::vec3(0.0f, 1.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-            glm::vec4 sampleDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, 1.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-            glm::vec4 sampleNDX = mandelbulb(c + dx * glm::vec3(-1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-            glm::vec4 sampleNDY = mandelbulb(c + dx * glm::vec3(0.0f, -1.0f, 0.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-            glm::vec4 sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), n, iterationLimit, pseudoInfinity, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-            glm::vec3 grad = glm::vec3{ sampleDX.w - sampleNDX.w, sampleDY.w - sampleNDY.w, sampleDZ.w - sampleNDZ.w } / dx * 0.5f;
+            float sampleDX = mandelbulb(c + dx * glm::vec3(1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            float sampleDY = mandelbulb(c + dx * glm::vec3(0.0f, 1.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            float sampleDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, 1.0f), n, iterationLimit, pseudoInfinity);
+            float sampleNDX = mandelbulb(c + dx * glm::vec3(-1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            float sampleNDY = mandelbulb(c + dx * glm::vec3(0.0f, -1.0f, 0.0f), n, iterationLimit, pseudoInfinity);
+            float sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), n, iterationLimit, pseudoInfinity);
+            glm::vec3 grad = glm::vec3{ sampleDX - sampleNDX, sampleDY - sampleNDY, sampleDZ - sampleNDZ } / dx * 0.5f;
             float gLength = glm::length(grad);
-            float w = (sample.w + sampleDX.w + sampleDY.w + sampleDZ.w + sampleNDX.w + sampleNDY.w + sampleNDZ.w) / 7.0f;
-            glm::vec3 color = (
-                                glm::vec3(sample.x, sample.y, sample.z)
-                              + glm::vec3(sampleDX.x, sampleDX.y, sampleDX.z)
-                              + glm::vec3(sampleDY.x, sampleDY.y, sampleDY.z)
-                              + glm::vec3(sampleDZ.x, sampleDZ.y, sampleDZ.z)
-                              + glm::vec3(sampleNDX.x, sampleNDX.y, sampleNDX.z)
-                              + glm::vec3(sampleNDY.x, sampleNDY.y, sampleNDY.z)
-                              + glm::vec3(sampleNDZ.x, sampleNDZ.y, sampleNDZ.z)
-                              ) / 7.0f;
-            glm::vec3 shading = color;  // If no gradient is available use the base color as "shaded color"
+            float w = (sample * 1.25f + sampleDX + sampleDY + sampleDZ + sampleNDX + sampleNDY + sampleNDZ) / 7.25f;
+            glm::vec4 rgba = transferColor(w, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            rgba.w *= scene->opacityScale;
+            glm::vec3 rgb = glm::vec3(rgba.x, rgba.y, rgba.z);
+            glm::vec3 shading = rgb;  // If no gradient is available use the base color as "shaded color"
             
             if (gLength > 0.00001f) {
-                glm::vec3 normal = - grad / gLength;
+                glm::vec3 normal = grad / gLength;  // !!! The gradient now is pointing towards the outside of the object. No (-1) !!!
                 glm::vec3 halfway = glm::normalize(scene->lightDir - rayDir);
                 shading = (powf(fmaxf(glm::dot(-rayDir, normal), 0.0f), 20.0f * scene->edgeIntensity) * scene->edgeIntensity + (1.0f - scene->edgeIntensity))  // Edge shading
                     * (
-                        + scene->lightPower * color * fmaxf(glm::dot(scene->lightDir, normal), 0.0f)                                        // Diffuse
-                        + scene->lightPower * scene->specularIntensity * powf(fmaxf(glm::dot(halfway, normal), 0.0f), scene->shininess)     // Specular
-                        + scene->ambientPower                                                                                               // Ambient
+                        + scene->lightPower * rgb * fmaxf(glm::dot(scene->lightDir, normal), 0.0f)                                        // Diffuse
+                        + scene->lightPower * scene->specularIntensity * powf(fmaxf(glm::dot(halfway, normal), 0.0f), scene->shininess)   // Specular
+                        + rgb * scene->ambientPower                                                                                       // Ambient
                     );
             }
             
-            accumulated.x += scene->opacityScale * stepSize * w * shading.x * (1.0f - accumulated.w);
-            accumulated.y += scene->opacityScale * stepSize * w * shading.y * (1.0f - accumulated.w);
-            accumulated.z += scene->opacityScale * stepSize * w * shading.z * (1.0f - accumulated.w);
-            accumulated.w += fminf(scene->opacityScale * stepSize * w, 1.0f) * (1.0f - accumulated.w);   // opacity (under operator)
-            if (accumulated.w > 0.95f)
+            accumulated.x += stepSize * rgba.w * shading.x * (1.0f - accumulated.w);
+            accumulated.y += stepSize * rgba.w * shading.y * (1.0f - accumulated.w);
+            accumulated.z += stepSize * rgba.w * shading.z * (1.0f - accumulated.w);
+            accumulated.w += fminf(stepSize * rgba.w, 1.0f) * (1.0f - accumulated.w);   // opacity (under operator)
+            if (accumulated.w > 0.96f) {
+                accumulated.w = 1.0f;
                 break;
+            }
         }
         c += stepSize * rayDir;     // Step along the ray
     }
