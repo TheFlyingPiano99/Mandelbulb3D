@@ -288,6 +288,12 @@ __device__ glm::vec4 transferColor(
     }
 }
 
+__device__ glm::vec3 tintedAttenuation(glm::vec4& rgba)
+{
+    float mix = 0.9f;
+    return rgba.w * ((1.0f - mix) * glm::vec3(1.0f, 1.0f, 1.0f) + mix * glm::vec3( 1.0f - rgba.x, 1.0f - rgba.y, 1.0f - rgba.z ));
+}
+
 __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, size_t height, glm::vec3 eyePos, glm::mat4 rayDirMtx,
                                     float n, unsigned int iterationLimit, float pseudoInfinity,
                                     float coloringMultiplier, float coloringPower,
@@ -325,7 +331,10 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
     float maxDistance = boundingSphereHitDistances.y - boundingSphereHitDistances.x;     
     float stepSize = maxDistance / (float)scene->rayResolution;
     glm::vec3 c = eyePos + boundingSphereHitDistances.x * rayDir;
-    glm::vec4 accumulated = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    
+    glm::vec3 accumulatedColor = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 accumulatedAttenuation = glm::vec3(0.0f, 0.0f, 0.0f);
+
     float dx = 0.001f;    // Differentiation step
 
     for (unsigned int step = 0; step < scene->rayResolution; step++) {
@@ -342,8 +351,8 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
             float gLength = glm::length(grad);
             float avgSample = (sample * 1.25f + sampleDX + sampleDY + sampleDZ + sampleNDX + sampleNDY + sampleNDZ) / 7.25f;
             glm::vec4 rgba = transferColor(avgSample, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-            rgba.w *= scene->opacityScale;
             glm::vec3 rgb = glm::vec3(rgba.x, rgba.y, rgba.z);
+            glm::vec3 tintedA = tintedAttenuation(rgba);
             glm::vec3 shading = rgb;  // If no gradient is available use the base color as "shaded color"
             
             if (gLength > 0.00001f) {
@@ -368,21 +377,21 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
                     );
             }
             
-            accumulated.x += stepSize * rgba.w * shading.x * (1.0f - accumulated.w);
-            accumulated.y += stepSize * rgba.w * shading.y * (1.0f - accumulated.w);
-            accumulated.z += stepSize * rgba.w * shading.z * (1.0f - accumulated.w);
-            accumulated.w += fminf(stepSize * rgba.w, 1.0f) * (1.0f - accumulated.w);   // opacity (under operator)
-            if (accumulated.w > 0.96f) {
-                accumulated.w = 1.0f;
+            accumulatedColor += stepSize * scene->opacityScale * rgba.w * shading * (1.0f - accumulatedAttenuation);  // Color (under operator)
+
+            glm::vec3 temp = stepSize * scene->opacityScale * tintedA;
+            accumulatedAttenuation += glm::vec3(fminf(temp.x, 0.0f), fminf(temp.y, 0.0f), fminf(temp.z, 0.0f)) * (1.0f - accumulatedAttenuation);   // Attenuation (under operator)
+            if (accumulatedAttenuation.x > 0.95f && accumulatedAttenuation.y > 0.95f && accumulatedAttenuation.z > 0.95f) {
+                accumulatedAttenuation = glm::vec3(1.0f, 1.0f, 1.0f);
                 break;
             }
         }
         c += stepSize * rayDir;     // Step along the ray
     }
     float4 outColor = float4{
-                        accumulated.x + backgroundColor.x * (1.0f - accumulated.w),
-                        accumulated.y + backgroundColor.y * (1.0f - accumulated.w),
-                        accumulated.z + backgroundColor.z * (1.0f - accumulated.w),
+                        accumulatedColor.x + backgroundColor.x * (1.0f - accumulatedAttenuation.x),
+                        accumulatedColor.y + backgroundColor.y * (1.0f - accumulatedAttenuation.y),
+                        accumulatedColor.z + backgroundColor.z * (1.0f - accumulatedAttenuation.z),
                         1.0f
                       };
     surf2Dwrite(rgbaFloatToInt(outColor), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
