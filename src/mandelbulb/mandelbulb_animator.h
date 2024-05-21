@@ -104,9 +104,19 @@ public:
 		return edgeIntensity;
 	}
 
+	float getDiffuseIntensity() const
+	{
+		return diffuseIntensity;
+	}
+
 	float getSpecularIntensity() const
 	{
 		return specularIntensity;
+	}
+
+	float getAmbientIntensity() const
+	{
+		return ambientIntensity;
 	}
 
 	float getShininess() const
@@ -144,8 +154,8 @@ private:
 	float animationSpeedN = 0.5f;
 	bool animationDirectionN = true;
 	float modulationN = 0.0f;
-	float coloringMultiplier = 1.0f;
-	float coloringPower = 0.9f;
+	float coloringMultiplier = 5.0f;
+	float coloringPower = 0.7f;
 
 	float modulationFrequency = 1.0f;
 	double modulationT = 0.0;
@@ -183,9 +193,11 @@ private:
 	glm::vec3 lightDir = glm::normalize( glm::vec3{ 1, 1, 1 } );
 	glm::vec3 lightPower = glm::vec3{ 1, 1, 1 };
 	glm::vec3 ambientPower = glm::vec3{ 0.01, 0.01, 0.01 };
-	float edgeIntensity = 1.0f;
+	float edgeIntensity = 0.5f;
+	float diffuseIntensity = 1.0f;
 	float specularIntensity = 1.0f;
-	float shininess = 10.0f;
+	float ambientIntensity = 1.0f;
+	float shininess = 20.0f;
 	float opacityScale = 10.0f;
 
 	bool isHighFidelityRender = false;

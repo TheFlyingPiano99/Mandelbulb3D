@@ -62,7 +62,9 @@ void MandelbulbAnimator::updateGui()
 	ImGui::ColorEdit3("Dir. light power", (float*)&lightPower);
 	ImGui::ColorEdit3("Ambient power", (float*)&ambientPower);
 	ImGui::DragFloat("Edge intensity", &edgeIntensity, 0.01f, 0.0f, 1.0f, "%.2f");
+	ImGui::DragFloat("Diffuse intensity", &diffuseIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
 	ImGui::DragFloat("Specular intensity", &specularIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
+	ImGui::DragFloat("Ambient intensity", &ambientIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
 	ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 100.0f, "%.0f");
 	ImGui::DragFloat("Opacity scale", &opacityScale, 0.1f, 1.0f, 100.0f, "%.1f");
 
@@ -92,7 +94,7 @@ void MandelbulbAnimator::updateGui()
 	ImGui::DragFloat("Color mix A <-> B [0.5]", &colorInterpolator1, 0.1f, 0.0f, 1.0f, "%.1f");
 	ImGui::DragFloat("Color mix A <-> B [1.0]", &colorInterpolator2, 0.1f, 0.0f, 1.0f, "%.1f");
 
-	ImGui::DragFloat("Coloring multiplier", &coloringMultiplier, 0.1f, 0.1f, 4.0f, "%.1f");
+	ImGui::DragFloat("Coloring multiplier", &coloringMultiplier, 0.1f, 0.1f, 10.0f, "%.1f");
 	ImGui::DragFloat("Coloring power", &coloringPower, 0.1f, 0.1f, 1.0f, "%.1f");
 
 	ImGui::Text("Modulation control");

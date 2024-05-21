@@ -44,10 +44,13 @@ struct SceneData {
     glm::vec3 lightDir;
     glm::vec3 lightPower;
     glm::vec3 ambientPower;
+    float diffuseIntensity;
     float specularIntensity;
+    float ambientIntensity;
     float edgeIntensity;
     float shininess;
     float opacityScale;
+    unsigned int shadowStepCount;
 
     // Fidelity:
     unsigned int rayResolution;
@@ -272,8 +275,7 @@ __device__ glm::vec4 transferColor(
                      )
 {
     float bias = 0.0f;
-    //float a = powf(1.0f - w + bias, 0.5f);
-    float a = 1.0f;
+    float a = powf(1.0f - w + bias, 0.5f);
     if (w - bias > 1.0f) {
         a = 0.0f;
     }
@@ -338,8 +340,8 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
             float sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), n, iterationLimit, pseudoInfinity);
             glm::vec3 grad = glm::vec3{ sampleDX - sampleNDX, sampleDY - sampleNDY, sampleDZ - sampleNDZ } / dx * 0.5f;
             float gLength = glm::length(grad);
-            float w = (sample * 1.25f + sampleDX + sampleDY + sampleDZ + sampleNDX + sampleNDY + sampleNDZ) / 7.25f;
-            glm::vec4 rgba = transferColor(w, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            float avgSample = (sample * 1.25f + sampleDX + sampleDY + sampleDZ + sampleNDX + sampleNDY + sampleNDZ) / 7.25f;
+            glm::vec4 rgba = transferColor(avgSample, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
             rgba.w *= scene->opacityScale;
             glm::vec3 rgb = glm::vec3(rgba.x, rgba.y, rgba.z);
             glm::vec3 shading = rgb;  // If no gradient is available use the base color as "shaded color"
@@ -347,11 +349,22 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
             if (gLength > 0.00001f) {
                 glm::vec3 normal = grad / gLength;  // !!! The gradient now is pointing towards the outside of the object. No (-1) !!!
                 glm::vec3 halfway = glm::normalize(scene->lightDir - rayDir);
-                shading = (powf(fmaxf(glm::dot(-rayDir, normal), 0.0f), 20.0f * scene->edgeIntensity) * scene->edgeIntensity + (1.0f - scene->edgeIntensity))  // Edge shading
+                float shadow = 0.0f;
+                glm::vec3 shadowC = c + stepSize * scene->lightDir;
+                float shadowStepWeight = 1.0f;
+                for (unsigned int j = 0; j < scene->shadowStepCount; j++) {
+                    float shadowSample = mandelbulb(shadowC, n, iterationLimit, pseudoInfinity);
+                    glm::vec4 shadowRGBA = transferColor(shadowSample, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+                    shadowRGBA.w *= scene->opacityScale * shadowStepWeight;
+                    shadow += fminf(stepSize * shadowRGBA.w, 1.0f) * (1.0f - shadow);
+                    shadowC += stepSize * scene->lightDir;
+                    shadowStepWeight *= 0.99f;
+                }
+                shading = (powf(fmaxf(glm::dot(-rayDir, normal), 0.0f), 3.0f * scene->edgeIntensity) * scene->edgeIntensity + (1.0f - scene->edgeIntensity))  // Edge shading
                     * (
-                        + scene->lightPower * rgb * fmaxf(glm::dot(scene->lightDir, normal), 0.0f)                                        // Diffuse
-                        + scene->lightPower * scene->specularIntensity * powf(fmaxf(glm::dot(halfway, normal), 0.0f), scene->shininess)   // Specular
-                        + rgb * scene->ambientPower                                                                                       // Ambient
+                        + scene->diffuseIntensity * (1.0f - shadow) * scene->lightPower * rgb * fmaxf(glm::dot(scene->lightDir, normal), 0.0f)                                        // Diffuse
+                        + scene->specularIntensity * (1.0f - shadow) * scene->lightPower * powf(fmaxf(glm::dot(halfway, normal), 0.0f), scene->shininess)   // Specular
+                        + scene->ambientIntensity * scene->ambientPower * rgb                                                                                        // Ambient
                     );
             }
             
@@ -402,10 +415,13 @@ void renderCuda()
             theMandelbulbAnimator.getLightDir(),
             theMandelbulbAnimator.getLightPower(),
             theMandelbulbAnimator.getAmbientPower(),
+            theMandelbulbAnimator.getDiffuseIntensity(),
             theMandelbulbAnimator.getSpecularIntensity(),
+            theMandelbulbAnimator.getAmbientIntensity(),
             theMandelbulbAnimator.getEdgeIntensity(),
             theMandelbulbAnimator.getShininess(),
             theMandelbulbAnimator.getOpacityScale(),
+            (unsigned int)((isHighFidelity)? 10 : 5),
             // Fidelity:
             (unsigned int)((isHighFidelity)? 3000 : 200)
         };
