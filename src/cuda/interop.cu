@@ -290,7 +290,7 @@ __device__ glm::vec4 transferColor(
 
 __device__ glm::vec3 tintedAttenuation(glm::vec4& rgba)
 {
-    float mix = 0.9f;
+    float mix = 0.0f;
     return rgba.w * ((1.0f - mix) * glm::vec3(1.0f, 1.0f, 1.0f) + mix * glm::vec3( 1.0f - rgba.x, 1.0f - rgba.y, 1.0f - rgba.z ));
 }
 
