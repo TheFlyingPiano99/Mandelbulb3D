@@ -32,6 +32,11 @@ void freeExportedVulkanImage()
 }
 
 struct SceneData {
+    // Mandelbulb:
+    float n;
+    unsigned int iterationLimit;
+    float pseudoInfinity;
+
     // Colors:
     glm::vec3 skyColor;
     glm::vec3 horizontColor;
@@ -39,10 +44,16 @@ struct SceneData {
     glm::vec3 color0;
     glm::vec3 color1;
     glm::vec3 color2;
+    float coloringMultiplier;
+    float coloringPower;
 
     // Shading:
-    glm::vec3 lightDir;
-    glm::vec3 lightPower;
+    glm::vec3 dirLightDirection;
+    glm::vec3 dirLightPower;
+    float dirLightIntensity;
+    glm::vec3 pointLightPosition;
+    glm::vec3 pointLightPower;
+    float pointLightIntensity;
     glm::vec3 ambientPower;
     float diffuseIntensity;
     float specularIntensity;
@@ -137,8 +148,10 @@ void exportSemaphoresToCuda(void* cudaWaitsForVulkanSemaphoreHandle, void* vulka
     checkCudaError(cudaImportExternalSemaphore(&vulkanWaitsForCudaSemaphore, &externalSemaphoreHandleDesc));
 }
 
+
 // compresses 4 32bit floats into a 32bit uint
-__device__ unsigned int rgbaFloatToInt(float4 rgba) {
+__device__ unsigned int rgbaFloatToInt(float4 rgba)
+{
     rgba.x = __saturatef(rgba.x);  // clamp to [0.0, 1.0]
     rgba.y = __saturatef(rgba.y);
     rgba.z = __saturatef(rgba.z);
@@ -149,7 +162,8 @@ __device__ unsigned int rgbaFloatToInt(float4 rgba) {
         ((unsigned int)(rgba.x * 255.0f));
 }
 
-__device__ float map(float x, float fromMin, float fromMax, float toMin, float toMax) {
+__device__ float map(float x, float fromMin, float fromMax, float toMin, float toMax)
+{
     return toMin + (toMax - toMin) * (x - fromMin) / (fromMax - fromMin);
 }
 
@@ -173,9 +187,7 @@ __device__ glm::vec3 vectorPower(glm::vec3 v, float n)
 
 __device__ float mandelbulb(
                         glm::vec3 c,
-                        float n,
-                        unsigned int iterationLimit,
-                        float pseudoInfinity
+                        SceneData* scene
 )
 {
     c = glm::vec3(c.x, c.z, c.y);    // Rearrange coordinates to change the orietation of the system
@@ -183,68 +195,13 @@ __device__ float mandelbulb(
     glm::vec3 v = glm::vec3{ 0.0f, 0.0f, 0.0f };
 
 
-    for (unsigned int i = 0; i < iterationLimit; i++) {
-        v = vectorPower(v, n) + c;
-        if (glm::length(v) > pseudoInfinity) {  // divergent iteration
+    for (unsigned int i = 0; i < scene->iterationLimit; i++) {
+        v = vectorPower(v, scene->n) + c;
+        if (glm::length(v) > scene->pseudoInfinity) {  // divergent iteration
             break;
         }
     }
-    return glm::length(v) / pseudoInfinity;   // Outside the object
-}
-
-
-__global__ void renderToSurface(cudaSurfaceObject_t dstSurface, size_t width, size_t height)
-{
-    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x >= width || y >= height) return;
-
-    float wx = map(float(x), 0.0f, (float)width, 0.0f, 1.0f);
-    float wy = map(float(y), 0.0f, (float)height, 0.0f, 1.0f);
-
-    float4 dataOut = float4{ wx, wy, wx, 1.0f };
-
-    surf2Dwrite(rgbaFloatToInt(dataOut), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
-}
-
-
-
-__global__ void renderMandelbrotToSurface(cudaSurfaceObject_t dstSurface, size_t width, size_t height, float pos_x, float pos_y, float zoom)
-{
-    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
-    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x >= width || y >= height) return;
-
-    float wx = map(float(x), 0.0f, (float)width, (-2.0f + pos_x) / zoom, (2.0f + pos_x) / zoom);
-    float wy = map(float(y), 0.0f, (float)height, (-2.0f + pos_y) / zoom, (2.0f + pos_y) / zoom);
-    
-    cuda::std::complex<float> c = cuda::std::complex<float>(wx, wy);
-    cuda::std::complex<float> z = 0.0f;
-    int n = 100;
-    double infinity = 200;
-    float4 dataOut = float4{ wx, wy, wx, 1.0f };    // Default (For debug)
-    dataOut = float4{ 0.0f, 0.0f, 0.0f, 1.0f };
-    for (unsigned int escapeTime = 0; escapeTime < n; escapeTime++) {
-        z = z*z + c;
-        if (abs(z) > infinity) {
-            float fractional = logf(logf(abs(z)) / logf(infinity)) / logf(2.0);
-            glm::vec3 color = 0.5f + 0.5f * cos(3.0f + (escapeTime - fractional) * 0.15f + glm::vec3(0.0f, 0.6f, 1.0));    // Coloring
-            dataOut = float4{ color.x, color.y, color.z, 1.0f };
-            break;
-        }
-    }
-    surf2Dwrite(rgbaFloatToInt(dataOut), dstSurface, x * 4, y); // expects byte coordinates. 1 pixel = 4 byte
-}
-
-__device__ float4 sphere(float3 c, float radius)
-{
-    if (norm3df(c.x, c.y, c.z) < radius)
-    {
-        return float4(1.0f, 1.0f, 1.0f, 0.01f);
-    }
-        return float4(0.0f, 0.0f, 0.0f, 0.0f);    
+    return glm::length(v) / scene->pseudoInfinity;   // Outside the object
 }
 
 
@@ -268,11 +225,7 @@ __device__ glm::vec2 hit_sphere(const glm::vec3& center, float radius, const glm
 
 __device__ glm::vec4 transferColor(
                         float w,
-                        float coloringMultiplier,
-                        float coloringPower,
-                        glm::vec3& color0,
-                        glm::vec3& color1,
-                        glm::vec3& color2
+                        SceneData* scene
                      )
 {
     float bias = 0.0f;
@@ -280,12 +233,12 @@ __device__ glm::vec4 transferColor(
     if (w - bias > 1.0f) {
         a = 0.0f;
     }
-    float t = powf(fminf(fmaxf(w, 0.0f), 1.0f) * coloringMultiplier, coloringPower);
+    float t = powf(fminf(fmaxf(w, 0.0f), 1.0f) * scene->coloringMultiplier, scene->coloringPower);
     if (t < 0.5) {
-        return glm::vec4(color0 * (1.0f - t * 2.0f) + color1 * t * 2.0f, a);
+        return glm::vec4(scene->color0 * (1.0f - t * 2.0f) + scene->color1 * t * 2.0f, a);
     }
     else {
-        return glm::vec4(color1 * (1.0f - (t - 0.5f) * 2.0f) + color2 * (t - 0.5f) * 2.0f, a);
+        return glm::vec4(scene->color1 * (1.0f - (t - 0.5f) * 2.0f) + scene->color2 * (t - 0.5f) * 2.0f, a);
     }
 }
 
@@ -294,9 +247,32 @@ __device__ glm::vec3 tintedAttenuation(glm::vec4& rgba, float mix)
     return rgba.w * ((1.0f - mix) * glm::vec3(1.0f, 1.0f, 1.0f) + mix * glm::vec3( 1.0f - rgba.x, 1.0f - rgba.y, 1.0f - rgba.z ));
 }
 
-__global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, size_t height, glm::vec3 eyePos, glm::mat4 rayDirMtx,
-                                    float n, unsigned int iterationLimit, float pseudoInfinity,
-                                    float coloringMultiplier, float coloringPower,
+__device__ glm::vec3 shadingFunction(SceneData* scene, float sourceIntensity, glm::vec3& pos, glm::vec3& albedo, glm::vec3& lightPower, glm::vec3& toLight, glm::vec3& normal, glm::vec3&& viewDir, float shadowStepSize, bool isAmbient)
+{
+                float lightDistanceSqr = glm::dot(toLight, toLight);
+                glm::vec3 lightDir = toLight / sqrtf(lightDistanceSqr);
+                glm::vec3 halfway = glm::normalize(lightDir + viewDir);
+                glm::vec3 shadow = glm::vec3(0.0f);
+                glm::vec3 shadowC = pos + shadowStepSize * lightDir;
+                float shadowStepWeight = 1.0f;
+                for (unsigned int j = 0; j < scene->shadowStepCount; j++) {
+                    float shadowSample = mandelbulb(shadowC, scene);
+                    glm::vec4 shadowRGBA = transferColor(shadowSample, scene);
+                    glm::vec3 temp = shadowStepSize * scene->opacityScale * shadowStepWeight * tintedAttenuation(shadowRGBA, scene->tintedAttenuationAmount);
+                    temp = glm::vec3(fmax(fminf(temp.x, 1.0f), 0.0f), fmaxf(fminf(temp.y, 1.0f), 0.0f), fmaxf(fminf(temp.z, 1.0f), 0.0f));
+                    shadow = shadow * (1.0f - temp) + temp;     // Over operator
+                    shadowC += shadowStepSize * lightDir;
+                    shadowStepWeight *= 0.99f;
+                }
+                return (powf(fabsf(glm::dot(viewDir, normal)), 3.0f * scene->edgeIntensity) * scene->edgeIntensity + (1.0f - scene->edgeIntensity))  // Edge shading
+                    * (
+                        + scene->diffuseIntensity * (1.0f - shadow) * sourceIntensity * lightPower / lightDistanceSqr * albedo * fmaxf(glm::dot(lightDir, normal), 0.0f)                         // Diffuse
+                        + scene->specularIntensity * (1.0f - shadow) * sourceIntensity * lightPower / lightDistanceSqr * powf(fmaxf(glm::dot(halfway, normal), 0.0f), scene->shininess)   // Specular
+                        + ((isAmbient)? scene->ambientIntensity * scene->ambientPower * albedo : glm::vec3(0.0f))                                                                               // Ambient
+                    );
+}
+
+__global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, size_t height, glm::vec3 eyePos, glm::mat4 rayDirMtx,                                    
                                     float rotationRad,
                                     SceneData* scene
                                     )
@@ -314,7 +290,7 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
 
     // rotate coordinate system to rotate the bulb:
     glm::mat4 rotationMat(1.0f);
-    rotationMat = glm::rotate(rotationMat, rotationRad, glm::vec3(0.0, 1.0, 0.0));
+    rotationMat = glm::rotate(rotationMat, -rotationRad, glm::vec3(0.0, 1.0, 0.0));
     glm::vec4 v4 = rotationMat * glm::vec4(eyePos, 1.0f); 
     eyePos = glm::vec3(v4.x, v4.y, v4.z);
     v4 = rotationMat * glm::vec4(rayDir, 0.0f);
@@ -338,49 +314,42 @@ __global__ void rayCastMandelbulb(cudaSurfaceObject_t dstSurface, size_t width, 
     float dx = 0.001f;    // Differentiation step
 
     for (unsigned int step = 0; step < scene->rayResolution; step++) {
-        float sample = mandelbulb(c, n, iterationLimit, pseudoInfinity);
-        if (sample < 1.0f) {
-            // Approximate gradient:
-            float sampleDX = mandelbulb(c + dx * glm::vec3(1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity);
-            float sampleDY = mandelbulb(c + dx * glm::vec3(0.0f, 1.0f, 0.0f), n, iterationLimit, pseudoInfinity);
-            float sampleDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, 1.0f), n, iterationLimit, pseudoInfinity);
-            float sampleNDX = mandelbulb(c + dx * glm::vec3(-1.0f, 0.0f, 0.0f), n, iterationLimit, pseudoInfinity);
-            float sampleNDY = mandelbulb(c + dx * glm::vec3(0.0f, -1.0f, 0.0f), n, iterationLimit, pseudoInfinity);
-            float sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), n, iterationLimit, pseudoInfinity);
+        float sample = mandelbulb(c, scene);
+        if (sample < 1.0f) {    // Inside the bulb
+            // Sample and approximate gradient:
+            float sampleDX = mandelbulb(c + dx * glm::vec3(1.0f, 0.0f, 0.0f), scene);
+            float sampleDY = mandelbulb(c + dx * glm::vec3(0.0f, 1.0f, 0.0f), scene);
+            float sampleDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, 1.0f), scene);
+            float sampleNDX = mandelbulb(c + dx * glm::vec3(-1.0f, 0.0f, 0.0f), scene);
+            float sampleNDY = mandelbulb(c + dx * glm::vec3(0.0f, -1.0f, 0.0f), scene);
+            float sampleNDZ = mandelbulb(c + dx * glm::vec3(0.0f, 0.0f, -1.0f), scene);
             glm::vec3 grad = glm::vec3{ sampleDX - sampleNDX, sampleDY - sampleNDY, sampleDZ - sampleNDZ } / dx * 0.5f;
             float gLength = glm::length(grad);
             float avgSample = (sample * 1.25f + sampleDX + sampleDY + sampleDZ + sampleNDX + sampleNDY + sampleNDZ) / 7.25f;
-            glm::vec4 rgba = transferColor(avgSample, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
+            glm::vec4 rgba = transferColor(avgSample, scene);
             glm::vec3 rgb = glm::vec3(rgba.x, rgba.y, rgba.z);
             glm::vec3 tintedA = tintedAttenuation(rgba, scene->tintedAttenuationAmount);
             glm::vec3 shading = rgb;  // If no gradient is available use the base color as "shaded color"
             
+            // Shading:
             if (gLength > 0.00001f) {
                 glm::vec3 normal = grad / gLength;  // !!! The gradient now is pointing towards the outside of the object. No (-1) !!!
-                glm::vec3 halfway = glm::normalize(scene->lightDir - rayDir);
-                glm::vec3 shadow = glm::vec3(0.0f);
-                glm::vec3 shadowC = c + stepSize * scene->lightDir;
-                float shadowStepWeight = 1.0f;
-                for (unsigned int j = 0; j < scene->shadowStepCount; j++) {
-                    float shadowSample = mandelbulb(shadowC, n, iterationLimit, pseudoInfinity);
-                    glm::vec4 shadowRGBA = transferColor(shadowSample, coloringMultiplier, coloringPower, scene->color0, scene->color1, scene->color2);
-                    glm::vec3 temp = stepSize * scene->opacityScale * shadowStepWeight * tintedAttenuation(shadowRGBA, scene->tintedAttenuationAmount);
-                    shadow += glm::vec3(fminf(temp.x, 1.0f), fminf(temp.y, 1.0f), fminf(temp.z, 1.0f)) * (1.0f - shadow);
-                    shadowC += stepSize * scene->lightDir;
-                    shadowStepWeight *= 0.99f;
-                }
-                shading = (powf(fmaxf(glm::dot(-rayDir, normal), 0.0f), 3.0f * scene->edgeIntensity) * scene->edgeIntensity + (1.0f - scene->edgeIntensity))  // Edge shading
-                    * (
-                        + scene->diffuseIntensity * (1.0f - shadow) * scene->lightPower * rgb * fmaxf(glm::dot(scene->lightDir, normal), 0.0f)                                        // Diffuse
-                        + scene->specularIntensity * (1.0f - shadow) * scene->lightPower * powf(fmaxf(glm::dot(halfway, normal), 0.0f), scene->shininess)   // Specular
-                        + scene->ambientIntensity * scene->ambientPower * rgb                                                                                        // Ambient
-                    );
+                // Directional light:
+                glm::vec4 lDir4 = rotationMat * glm::vec4(scene->dirLightDirection, 0.0f);
+                glm::vec3 toLight = glm::vec3(lDir4.x, lDir4.y, lDir4.z);
+                shading = shadingFunction(scene, scene->dirLightIntensity, c, rgb, scene->dirLightPower, toLight, normal, -rayDir, stepSize * 2.0f, true);
+                // Point light:
+                lDir4 = rotationMat * glm::vec4(scene->pointLightPosition, 1.0f);
+                toLight = glm::vec3(lDir4.x, lDir4.y, lDir4.z) - c;
+                shading += shadingFunction(scene, scene->pointLightIntensity, c, rgb, scene->pointLightPower, toLight, normal, -rayDir, stepSize * 2.0f, false);
             }
             
-            accumulatedColor += stepSize * scene->opacityScale * rgba.w * shading * (1.0f - accumulatedAttenuation);  // Color (under operator)
+            // Accumulation:
+            glm::vec3 temp = stepSize * scene->opacityScale * rgba.w * shading;
+            accumulatedColor += glm::vec3(fmaxf(fminf(temp.x, 1.0f), 0.0f), fmaxf(fminf(temp.y, 1.0f), 0.0f), fmaxf(fminf(temp.z, 1.0f), 0.0f)) * (1.0f - accumulatedAttenuation);  // Color (under operator)
 
-            glm::vec3 temp = stepSize * scene->opacityScale * tintedA;
-            accumulatedAttenuation += glm::vec3(fminf(temp.x, 1.0f), fminf(temp.y, 1.0f), fminf(temp.z, 1.0f)) * (1.0f - accumulatedAttenuation);   // Attenuation (under operator)
+            temp = stepSize * scene->opacityScale * tintedA;
+            accumulatedAttenuation += glm::vec3(fmaxf(fminf(temp.x, 1.0f), 0.0f), fmaxf(fminf(temp.y, 1.0f), 0.0f), fmaxf(fminf(temp.z, 1.0f), 0.0f)) * (1.0f - accumulatedAttenuation);   // Attenuation (under operator)
             if (accumulatedAttenuation.x > 0.95f && accumulatedAttenuation.y > 0.95f && accumulatedAttenuation.z > 0.95f) {
                 accumulatedAttenuation = glm::vec3(1.0f, 1.0f, 1.0f);
                 break;
@@ -410,9 +379,12 @@ void renderCuda()
 
         float n = theMandelbulbAnimator.getN();
         unsigned int iterationLimit = (isHighFidelity)? 300 : 8;
-        float pseudoInfinity = 16.0f;
 
         SceneData hostSceneData =  {
+            // Mandelbulb:
+            theMandelbulbAnimator.getN(),
+            iterationLimit,
+            theMandelbulbAnimator.getPseudoInfinity(),
             // Colors:
             theMandelbulbAnimator.getSkyColor(),
             theMandelbulbAnimator.getHorizontColor(),
@@ -420,9 +392,15 @@ void renderCuda()
             theMandelbulbAnimator.getColor0(),
             theMandelbulbAnimator.getColor1(),
             theMandelbulbAnimator.getColor2(),
+            theMandelbulbAnimator.getColoringMultiplier(),
+            theMandelbulbAnimator.getColoringPower(),
             // Shading:
-            theMandelbulbAnimator.getLightDir(),
-            theMandelbulbAnimator.getLightPower(),
+            theMandelbulbAnimator.getDirLightDirection(),
+            theMandelbulbAnimator.getDirLightPower(),
+            theMandelbulbAnimator.getDirLightIntensity(),
+            theMandelbulbAnimator.getPointLightPosition(),
+            theMandelbulbAnimator.getPointLightPower(),
+            theMandelbulbAnimator.getPointLightIntensity(),
             theMandelbulbAnimator.getAmbientPower(),
             theMandelbulbAnimator.getDiffuseIntensity(),
             theMandelbulbAnimator.getSpecularIntensity(),
@@ -444,11 +422,6 @@ void renderCuda()
             imageHeight,
             thePerspectiveCamera.eyePos(),
             thePerspectiveCamera.rayDirMatrix((float)imageWidth / (float)imageHeight),
-            n,
-            iterationLimit,
-            pseudoInfinity,
-            theMandelbulbAnimator.getColoringMultiplier(),
-            theMandelbulbAnimator.getColoringPower(),
             theMandelbulbAnimator.getRotation(),
             sceneData
         );

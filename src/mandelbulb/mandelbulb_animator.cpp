@@ -59,7 +59,15 @@ float MandelbulbAnimator::getModulated(float baseVal, float modAmp, float min, f
 void MandelbulbAnimator::updateGui()
 {
 	ImGui::Text("Shading");
-	ImGui::ColorEdit3("Dir. light power", (float*)&lightPower);
+	ImGui::Text("Directional light");
+	ImGui::DragFloat3("Dir light direction", (float*)&dirLightDirection, 0.1f, -1.0f, 1.0f, "%.2f");
+	dirLightDirection = glm::normalize(dirLightDirection);
+	ImGui::ColorEdit3("Dir. light color", (float*)&dirLightPower);
+	ImGui::DragFloat("Dir. light intensity", (float*)&dirLightIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
+	ImGui::Text("Point light");
+	ImGui::DragFloat3("Point light position", (float*)&pointLightPosition, 0.1f, -2.0f, 2.0f, "%.1f");
+	ImGui::ColorEdit3("Point light color", (float*)&pointLightPower);
+	ImGui::DragFloat("Point light intensity", (float*)&pointLightIntensity, 0.01f, 0.0f, 10.0f, "%.2f");
 	ImGui::ColorEdit3("Ambient power", (float*)&ambientPower);
 	ImGui::DragFloat("Edge intensity", &edgeIntensity, 0.01f, 0.0f, 1.0f, "%.2f");
 	ImGui::DragFloat("Diffuse intensity", &diffuseIntensity, 0.01f, 0.0f, 10.0f, "%.2f");

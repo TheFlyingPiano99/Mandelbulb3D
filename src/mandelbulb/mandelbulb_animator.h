@@ -84,16 +84,36 @@ public:
 		modAmplitude
 	};
 
-	const glm::vec3& getLightDir() const
+	const glm::vec3& getDirLightDirection() const
 	{
-		return lightDir;
+		return dirLightDirection;
 	}
 
-	const glm::vec3& getLightPower() const
+	const glm::vec3& getDirLightPower() const
 	{
-		return lightPower;
+		return dirLightPower;
 	}
 
+	float getDirLightIntensity() const
+	{
+		return dirLightIntensity;
+	}
+
+	const glm::vec3& getPointLightPosition() const
+	{
+		return pointLightPosition;
+	}
+
+	const glm::vec3& getPointLightPower() const
+	{
+		return pointLightPower;
+	}
+
+	float getPointLightIntensity() const
+	{
+		return pointLightIntensity;
+	}
+	
 	const glm::vec3& getAmbientPower() const
 	{
 		return ambientPower;
@@ -144,8 +164,14 @@ public:
 		return opacityScale;
 	}
 
-	float getTintedAttenuationAmount() const {
+	float getTintedAttenuationAmount() const
+	{
 		return tintedAttenuationAmount;
+	}
+
+	float getPseudoInfinity() const
+	{
+		return pseudoInfinity;
 	}
 
 private:
@@ -158,6 +184,9 @@ private:
 	float animationSpeedN = 0.5f;
 	bool animationDirectionN = true;
 	float modulationN = 0.0f;
+
+	float pseudoInfinity = 16.0f;
+
 	float coloringMultiplier = 5.0f;
 	float coloringPower = 0.7f;
 
@@ -194,8 +223,13 @@ private:
 	float rotationModulationAmp = 0.0f;
 	
 	// Shading-related:
-	glm::vec3 lightDir = glm::normalize( glm::vec3{ 1, 1, 1 } );
-	glm::vec3 lightPower = glm::vec3{ 1, 1, 1 };
+	glm::vec3 dirLightDirection = glm::normalize( glm::vec3{ 1, 1, 1 } );
+	glm::vec3 dirLightPower = glm::vec3{ 1, 1, 1 };
+	float dirLightIntensity = 1.0f;
+	glm::vec3 pointLightPosition = glm::normalize(glm::vec3{ -3, -0.1, -3 });
+	glm::vec3 pointLightPower = glm::vec3{ 1, 1, 1 };
+	float pointLightIntensity = 2.0f;
+
 	glm::vec3 ambientPower = glm::vec3{ 0.01, 0.01, 0.01 };
 	float edgeIntensity = 0.5f;
 	float diffuseIntensity = 1.0f;
