@@ -45,19 +45,19 @@ public:
 		return groundColor;
 	}
 
-	const glm::vec3& getColor0() const
+	const glm::vec3 getColor0() const
 	{
 		float t = getModulated(colorInterpolator0, modulationColor0, 0.0f, 1.0f);
 		return color00 * (1.0f - t) + color10 * t;
 	}
 
-	const glm::vec3& getColor1() const
+	const glm::vec3 getColor1() const
 	{
 		float t = getModulated(colorInterpolator1, modulationColor1, 0.0f, 1.0f);
 		return color01 * (1.0f - t) + color11 * t;
 	}
 
-	const glm::vec3& getColor2() const
+	const glm::vec3 getColor2() const
 	{
 		float t = getModulated(colorInterpolator2, modulationColor2, 0.0f, 1.0f);
 		return color02 * (1.0f - t) + color12 * t;

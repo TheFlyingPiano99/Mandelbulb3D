@@ -66,7 +66,7 @@ add_executable(${PROJECT_NAME}
 set_source_files_properties(${THIRDPARTY_FILES} PROPERTIES COMPILE_OPTIONS -w)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_ARCHITECTURES "native")
-include_directories("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.0/include") # intellisense
+include_directories("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.4/include") # intellisense
 set_target_properties(${PROJECT_NAME} PROPERTIES CUDA_SEPARABLE_COMPILATION ON) # dynamic parallelism
 set_source_files_properties(${CUDA_FILES} PROPERTIES COMPILE_OPTIONS -lineinfo) # nsight source map
 
