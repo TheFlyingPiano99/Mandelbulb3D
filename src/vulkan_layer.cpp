@@ -730,7 +730,7 @@ void VulkanLayer::generateMipmaps(vk::Image image, vk::Format imageFormat, uint3
 
 void VulkanLayer::createInstance(bool enableValidationLayers)
 {
-    vk::DynamicLoader dl;
+    vk::detail::DynamicLoader dl;
     auto vkGetInstanceProcAddr = dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
@@ -770,11 +770,11 @@ void VulkanLayer::createDebugMessenger()
     createInfo.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation | vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral;
 
     createInfo.pfnUserCallback = [] (auto messageSeverity, auto /* messageType */, auto pCallbackData, void* /* pUserData */) -> unsigned  int {
-        if (messageSeverity == (int)vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
+        if ((int)messageSeverity == (int)vk::DebugUtilsMessageSeverityFlagBitsEXT::eError) {
             vulkanLogger.LogError(pCallbackData->pMessage);
-        } else if (messageSeverity == (int)vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+        } else if ((int)messageSeverity == (int)vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
             vulkanLogger.LogWarning(pCallbackData->pMessage);
-        } else if (messageSeverity == (int)vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo) {
+        } else if ((int)messageSeverity == (int)vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo) {
             vulkanLogger.LogInfo(pCallbackData->pMessage);
         }
         return VK_FALSE;

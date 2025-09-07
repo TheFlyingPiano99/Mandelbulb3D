@@ -4,10 +4,10 @@
 #define MAX_FRAMES_IN_FLIGHT 2
 #define MAX_OBJECT_NUM 200
 
-inline std::filesystem::path cDirShader = "shaders";
-inline std::filesystem::path cDirShaderSources = "../src/shaders";
-inline std::filesystem::path cDirCache = "cache";
-inline std::filesystem::path cDirModels = "models";
+inline std::filesystem::path cDirShader = std::filesystem::path(WORK_DIR).append("shaders");
+inline std::filesystem::path cDirShaderSources = std::filesystem::path(WORK_DIR).append("../src/shaders");
+inline std::filesystem::path cDirCache = std::filesystem::path(WORK_DIR).append("cache");
+inline std::filesystem::path cDirModels = std::filesystem::path(WORK_DIR).append("models");
 inline bool cLogAssetLoading = false;
 inline bool cDebugValidationLayers = true;
 inline bool cDebugObjectNames = true;

@@ -94,3 +94,5 @@ else()
 endif()
 
 target_link_libraries(${PROJECT_NAME} ${LIBRARIES})
+
+target_compile_definitions(${PROJECT_NAME} PUBLIC WORK_DIR="${CMAKE_SOURCE_DIR}/wd/")
